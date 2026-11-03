@@ -1,6 +1,15 @@
+# API framework
 fastapi
 uvicorn[standard]
+pydantic
+
+# Data processing
 pandas
 numpy
+
+# Satellite and geospatial data
+earthengine-api
+
+# Testing
 pytest
 httpx

@@ -1,20 +1,45 @@
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+
+# Testing and coverage
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
 .venv/
 venv/
+env/
+
+# Environment variables and secrets
 .env
 .env.*
 !.env.example
+
+# Logs
 *.log
+
+# Generated data
 data/raw/*
 !data/raw/.gitkeep
+
 data/processed/*
 !data/processed/.gitkeep
+
+# Machine learning models
 models/
 *.pkl
 *.joblib
 *.h5
 *.keras
 *.onnx
+
+# Editor and operating system files
 .DS_Store
+.vscode/
+.idea/
+
+# Temporary archives
+*.zip
