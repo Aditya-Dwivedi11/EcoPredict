@@ -8,8 +8,13 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, model_validator
 
+from ecopredict.raster_visualization import (
+    get_raster_metadata,
+    render_raster_png,
+)
 from ecopredict.satellite import (
     initialize_earth_engine,
     run_analysis,
@@ -32,8 +37,13 @@ app = FastAPI(
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+
 NDVI_RESULTS_FILE = (
     PROJECT_ROOT / "data" / "processed" / "ndvi_change.csv"
+)
+
+RASTER_DIRECTORY = (
+    PROJECT_ROOT / "data" / "processed" / "rasters"
 )
 
 
@@ -217,4 +227,96 @@ def create_ndvi_analysis(request: NDVIAnalysisRequest):
                 "Check Earth Engine authentication, project configuration, "
                 "permissions, and data availability."
             ),
+        ) from exc
+
+
+@app.get("/api/v1/ndvi-rasters/metadata")
+def get_ndvi_raster_metadata():
+    """Return metadata and statistics for all NDVI raster layers."""
+
+    metadata_file = RASTER_DIRECTORY / "metadata.json"
+
+    if not metadata_file.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="NDVI raster metadata not found. Run raster export first.",
+        )
+
+    try:
+        export_metadata = json.loads(
+            metadata_file.read_text(encoding="utf-8")
+        )
+
+        layers = {}
+
+        for layer in ["before", "after", "difference"]:
+            layers[layer] = get_raster_metadata(
+                layer,
+                RASTER_DIRECTORY,
+            )
+
+        return {
+            "project": "EcoPredict",
+            "indicator": "NDVI",
+            "source": export_metadata["source_collection"],
+            "before_period": export_metadata["before_period"],
+            "after_period": export_metadata["after_period"],
+            "layers": layers,
+        }
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        ) from exc
+
+    except (OSError, ValueError, KeyError) as exc:
+        logger.exception("Could not read raster metadata.")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not read NDVI raster metadata.",
+        ) from exc
+
+
+@app.get("/api/v1/ndvi-rasters/{layer}.png")
+def get_ndvi_raster_image(layer: str):
+    """Return a rendered PNG overlay for an NDVI raster layer."""
+
+    if layer not in {"before", "after", "difference"}:
+        raise HTTPException(
+            status_code=404,
+            detail="Unknown raster layer. Choose before, after, or difference.",
+        )
+
+    try:
+        png_data, bounds = render_raster_png(
+            layer,
+            RASTER_DIRECTORY,
+        )
+
+        return Response(
+            content=png_data,
+            media_type="image/png",
+            headers={
+                "X-Raster-West": str(bounds["west"]),
+                "X-Raster-South": str(bounds["south"]),
+                "X-Raster-East": str(bounds["east"]),
+                "X-Raster-North": str(bounds["north"]),
+                "Cache-Control": "no-cache",
+            },
+        )
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Raster layer '{layer}' is not available.",
+        ) from exc
+
+    except (OSError, ValueError) as exc:
+        logger.exception("Could not render raster layer: %s", layer)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not render the requested raster layer.",
         ) from exc

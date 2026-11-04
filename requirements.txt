@@ -14,3 +14,4 @@ earthengine-api
 pytest
 httpx
 rasterio>=1.5,<2.0
+Pillow>=11,<13
