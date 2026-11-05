@@ -1,0 +1,168 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>EcoPredict | Environmental Intelligence</title>
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+    <div class="app-container">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+
+            <div class="brand">
+                <div class="brand-icon">E</div>
+                <div>
+                    <h1>EcoPredict</h1>
+                    <p>ENVIRONMENTAL INTELLIGENCE</p>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <label>STUDY REGION</label>
+
+                <div class="search-box">
+                    <input
+                        type="text"
+                        id="region-search"
+                        placeholder="Search a location..."
+                    >
+                    <button id="search-button">Search</button>
+                </div>
+
+                <p class="helper-text">
+                    Search for a city or geographic location.
+                </p>
+            </div>
+
+            <div class="sidebar-section">
+                <label>SATELLITE ANALYSIS</label>
+
+                <div class="layer-controls">
+                    <button class="layer-button active" data-layer="before">
+                        Before
+                    </button>
+
+                    <button class="layer-button" data-layer="after">
+                        After
+                    </button>
+
+                    <button class="layer-button" data-layer="difference">
+                        Difference
+                    </button>
+                </div>
+
+                <p id="layer-description" class="helper-text">
+                    Earlier satellite observation.
+                </p>
+            </div>
+
+            <div class="sidebar-section">
+                <label>ANALYSIS PERIOD</label>
+
+                <div class="period-card">
+                    <span>Before</span>
+                    <strong id="before-period">Loading...</strong>
+                </div>
+
+                <div class="period-card">
+                    <span>After</span>
+                    <strong id="after-period">Loading...</strong>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <label>VEGETATION INDICATORS</label>
+
+                <div class="metric-card">
+                    <span>Mean NDVI — Before</span>
+                    <strong id="before-ndvi">--</strong>
+                </div>
+
+                <div class="metric-card">
+                    <span>Mean NDVI — After</span>
+                    <strong id="after-ndvi">--</strong>
+                </div>
+
+                <div class="metric-card">
+                    <span>Mean NDVI Change</span>
+                    <strong id="ndvi-change">--</strong>
+                </div>
+
+                <div class="metric-card">
+                    <span>Valid Pixels</span>
+                    <strong id="valid-pixels">--</strong>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <span class="status-dot"></span>
+                Satellite data interface
+                <p>Source: Sentinel-2</p>
+            </div>
+
+        </aside>
+
+        <!-- Main dashboard -->
+        <main class="main-content">
+
+            <header class="topbar">
+                <div>
+                    <h2>Environmental Monitoring</h2>
+                    <p>Satellite-derived vegetation intelligence</p>
+                </div>
+
+                <div class="location-label" id="location-label">
+                    Initial study area: Kanpur, India
+                </div>
+            </header>
+
+            <section class="map-section">
+
+                <div class="map-toolbar">
+                    <div>
+                        <strong>Satellite NDVI Map</strong>
+                        <span id="map-layer-label">Before</span>
+                    </div>
+
+                    <div class="map-legend">
+                        <span class="legend-low"></span>
+                        Low vegetation
+                        <span class="legend-high"></span>
+                        High vegetation
+                    </div>
+                </div>
+
+                <div id="map"></div>
+
+                <div class="map-caption">
+                    Visualization of satellite-derived NDVI.
+                    This layer represents vegetation greenness, not a
+                    direct measurement of vegetation health.
+                </div>
+
+            </section>
+
+            <footer class="dashboard-footer">
+                <span>EcoPredict v0.1.0</span>
+                <span id="system-status">Connecting to API...</span>
+            </footer>
+
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

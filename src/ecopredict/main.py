@@ -8,9 +8,11 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
+from ecopredict.raster import export_ndvi_rasters
 from ecopredict.raster_visualization import (
     get_raster_metadata,
     render_raster_png,
@@ -24,7 +26,26 @@ from ecopredict.validation import (
     validate_period,
 )
 
+
 logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------
+# Application configuration
+# --------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+NDVI_RESULTS_FILE = (
+    PROJECT_ROOT / "data" / "processed" / "ndvi_change.csv"
+)
+
+RASTER_DIRECTORY = (
+    PROJECT_ROOT / "data" / "processed" / "rasters"
+)
+
+FRONTEND_DIRECTORY = PROJECT_ROOT / "frontend"
+
 
 app = FastAPI(
     title="EcoPredict API",
@@ -35,19 +56,29 @@ app = FastAPI(
     version="0.1.0",
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# --------------------------------------------------
+# Frontend static files
+# --------------------------------------------------
 
-NDVI_RESULTS_FILE = (
-    PROJECT_ROOT / "data" / "processed" / "ndvi_change.csv"
+if not FRONTEND_DIRECTORY.is_dir():
+    raise RuntimeError(
+        f"Frontend directory not found: {FRONTEND_DIRECTORY}"
+    )
+
+app.mount(
+    "/static",
+    StaticFiles(directory=FRONTEND_DIRECTORY),
+    name="static",
 )
 
-RASTER_DIRECTORY = (
-    PROJECT_ROOT / "data" / "processed" / "rasters"
-)
 
+# --------------------------------------------------
+# Request validation
+# --------------------------------------------------
 
 class NDVIAnalysisRequest(BaseModel):
+
     west: float = Field(ge=-180, le=180)
     south: float = Field(ge=-90, le=90)
     east: float = Field(ge=-180, le=180)
@@ -60,6 +91,7 @@ class NDVIAnalysisRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_analysis_inputs(self):
+
         try:
             validate_bounds(
                 (
@@ -80,8 +112,13 @@ class NDVIAnalysisRequest(BaseModel):
                 self.after_end,
             )
 
-            before_end = date.fromisoformat(self.before_end)
-            after_start = date.fromisoformat(self.after_start)
+            before_end = date.fromisoformat(
+                self.before_end
+            )
+
+            after_start = date.fromisoformat(
+                self.after_start
+            )
 
             if before_end > after_start:
                 raise ValueError(
@@ -95,8 +132,13 @@ class NDVIAnalysisRequest(BaseModel):
         return self
 
 
+# --------------------------------------------------
+# Root and dashboard endpoints
+# --------------------------------------------------
+
 @app.get("/")
 def root():
+
     return {
         "project": "EcoPredict",
         "status": "running",
@@ -105,19 +147,35 @@ def root():
     }
 
 
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+
+    return FileResponse(
+        FRONTEND_DIRECTORY / "index.html"
+    )
+
+
 @app.get("/health")
 def health():
+
     return {
         "status": "healthy",
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "timestamp_utc": datetime.now(
+            timezone.utc
+        ).isoformat(),
     }
 
+
+# --------------------------------------------------
+# NDVI analysis endpoints
+# --------------------------------------------------
 
 @app.get("/api/v1/ndvi-analysis")
 def get_ndvi_analysis():
     """Return the latest saved satellite NDVI analysis."""
 
     if not NDVI_RESULTS_FILE.is_file():
+
         raise HTTPException(
             status_code=404,
             detail=(
@@ -127,9 +185,13 @@ def get_ndvi_analysis():
         )
 
     try:
-        results = pd.read_csv(NDVI_RESULTS_FILE)
+
+        results = pd.read_csv(
+            NDVI_RESULTS_FILE
+        )
 
         if results.empty:
+
             raise HTTPException(
                 status_code=404,
                 detail="The satellite results file contains no records.",
@@ -155,8 +217,15 @@ def get_ndvi_analysis():
     except HTTPException:
         raise
 
-    except (OSError, ValueError, pd.errors.ParserError) as exc:
-        logger.exception("Could not read saved NDVI results.")
+    except (
+        OSError,
+        ValueError,
+        pd.errors.ParserError,
+    ) as exc:
+
+        logger.exception(
+            "Could not read saved NDVI results."
+        )
 
         raise HTTPException(
             status_code=500,
@@ -165,8 +234,13 @@ def get_ndvi_analysis():
 
 
 @app.post("/api/v1/ndvi-analysis")
-def create_ndvi_analysis(request: NDVIAnalysisRequest):
-    """Run satellite NDVI analysis for a requested area and two periods."""
+def create_ndvi_analysis(
+    request: NDVIAnalysisRequest,
+):
+    """
+    Run satellite NDVI analysis and export raster layers
+    for the requested geographical area and periods.
+    """
 
     bounds = (
         request.west,
@@ -176,22 +250,44 @@ def create_ndvi_analysis(request: NDVIAnalysisRequest):
     )
 
     periods = [
-        (request.before_start, request.before_end),
-        (request.after_start, request.after_end),
+        (
+            request.before_start,
+            request.before_end,
+        ),
+        (
+            request.after_start,
+            request.after_end,
+        ),
     ]
 
     try:
+
+        # Step 1: Initialize Google Earth Engine.
         initialize_earth_engine()
 
+        # Step 2: Run statistical NDVI analysis.
         run_analysis(
             bounds,
             periods,
             NDVI_RESULTS_FILE,
         )
 
-        results = pd.read_csv(NDVI_RESULTS_FILE)
+        # Step 3: Export Before, After and Difference rasters.
+        # This updates the GeoTIFF files and metadata used by the map.
+        exported_files = export_ndvi_rasters(
+            bounds=bounds,
+            periods=periods,
+            output_dir=RASTER_DIRECTORY,
+            scale=10,
+        )
+
+        # Step 4: Read the latest statistical results.
+        results = pd.read_csv(
+            NDVI_RESULTS_FILE
+        )
 
         if results.empty:
+
             raise HTTPException(
                 status_code=422,
                 detail="Satellite analysis produced no result records.",
@@ -203,7 +299,9 @@ def create_ndvi_analysis(request: NDVIAnalysisRequest):
 
         return {
             "project": "EcoPredict",
-            "message": "Satellite analysis completed.",
+            "message": (
+                "Satellite analysis and raster export completed."
+            ),
             "source": "COPERNICUS/S2_SR_HARMONIZED",
             "indicator": "NDVI",
             "description": (
@@ -212,44 +310,77 @@ def create_ndvi_analysis(request: NDVIAnalysisRequest):
             ),
             "record_count": len(records),
             "results": records,
+            "raster_export": {
+                "status": "completed",
+                "layers": [
+                    "before",
+                    "after",
+                    "difference",
+                ],
+                "files": [
+                    path.name for path in exported_files
+                ],
+            },
         }
 
     except HTTPException:
         raise
 
     except Exception as exc:
-        logger.exception("Satellite analysis failed.")
+
+        logger.exception(
+            "Satellite analysis or raster export failed."
+        )
 
         raise HTTPException(
             status_code=502,
             detail=(
                 "Satellite analysis could not be completed. "
+                "The analysis or raster export failed. "
                 "Check Earth Engine authentication, project configuration, "
-                "permissions, and data availability."
+                "permissions, data availability, and raster export limits."
             ),
         ) from exc
 
+
+# --------------------------------------------------
+# NDVI raster metadata endpoint
+# --------------------------------------------------
 
 @app.get("/api/v1/ndvi-rasters/metadata")
 def get_ndvi_raster_metadata():
     """Return metadata and statistics for all NDVI raster layers."""
 
-    metadata_file = RASTER_DIRECTORY / "metadata.json"
+    metadata_file = (
+        RASTER_DIRECTORY / "metadata.json"
+    )
 
     if not metadata_file.is_file():
+
         raise HTTPException(
             status_code=404,
-            detail="NDVI raster metadata not found. Run raster export first.",
+            detail=(
+                "NDVI raster metadata not found. "
+                "Run raster export first."
+            ),
         )
 
     try:
+
         export_metadata = json.loads(
-            metadata_file.read_text(encoding="utf-8")
+            metadata_file.read_text(
+                encoding="utf-8"
+            )
         )
 
         layers = {}
 
-        for layer in ["before", "after", "difference"]:
+        for layer in [
+            "before",
+            "after",
+            "difference",
+        ]:
+
             layers[layer] = get_raster_metadata(
                 layer,
                 RASTER_DIRECTORY,
@@ -265,13 +396,21 @@ def get_ndvi_raster_metadata():
         }
 
     except FileNotFoundError as exc:
+
         raise HTTPException(
             status_code=404,
             detail=str(exc),
         ) from exc
 
-    except (OSError, ValueError, KeyError) as exc:
-        logger.exception("Could not read raster metadata.")
+    except (
+        OSError,
+        ValueError,
+        KeyError,
+    ) as exc:
+
+        logger.exception(
+            "Could not read raster metadata."
+        )
 
         raise HTTPException(
             status_code=500,
@@ -279,17 +418,34 @@ def get_ndvi_raster_metadata():
         ) from exc
 
 
+# --------------------------------------------------
+# NDVI raster PNG endpoint
+# --------------------------------------------------
+
 @app.get("/api/v1/ndvi-rasters/{layer}.png")
-def get_ndvi_raster_image(layer: str):
+def get_ndvi_raster_image(
+    layer: str,
+):
     """Return a rendered PNG overlay for an NDVI raster layer."""
 
-    if layer not in {"before", "after", "difference"}:
+    supported_layers = {
+        "before",
+        "after",
+        "difference",
+    }
+
+    if layer not in supported_layers:
+
         raise HTTPException(
             status_code=404,
-            detail="Unknown raster layer. Choose before, after, or difference.",
+            detail=(
+                "Unknown raster layer. "
+                "Choose before, after, or difference."
+            ),
         )
 
     try:
+
         png_data, bounds = render_raster_png(
             layer,
             RASTER_DIRECTORY,
@@ -299,22 +455,40 @@ def get_ndvi_raster_image(layer: str):
             content=png_data,
             media_type="image/png",
             headers={
-                "X-Raster-West": str(bounds["west"]),
-                "X-Raster-South": str(bounds["south"]),
-                "X-Raster-East": str(bounds["east"]),
-                "X-Raster-North": str(bounds["north"]),
+                "X-Raster-West": str(
+                    bounds["west"]
+                ),
+                "X-Raster-South": str(
+                    bounds["south"]
+                ),
+                "X-Raster-East": str(
+                    bounds["east"]
+                ),
+                "X-Raster-North": str(
+                    bounds["north"]
+                ),
                 "Cache-Control": "no-cache",
             },
         )
 
     except FileNotFoundError as exc:
+
         raise HTTPException(
             status_code=404,
-            detail=f"Raster layer '{layer}' is not available.",
+            detail=(
+                f"Raster layer '{layer}' is not available."
+            ),
         ) from exc
 
-    except (OSError, ValueError) as exc:
-        logger.exception("Could not render raster layer: %s", layer)
+    except (
+        OSError,
+        ValueError,
+    ) as exc:
+
+        logger.exception(
+            "Could not render raster layer: %s",
+            layer,
+        )
 
         raise HTTPException(
             status_code=500,

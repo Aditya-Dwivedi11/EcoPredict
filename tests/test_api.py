@@ -1,4 +1,5 @@
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
@@ -163,11 +164,32 @@ def test_ndvi_post_runs_analysis(
     import ecopredict.main as main
 
     output_file = tmp_path / "ndvi_change.csv"
+    raster_directory = tmp_path / "rasters"
 
     monkeypatch.setattr(
         main,
         "NDVI_RESULTS_FILE",
         output_file,
+    )
+
+    monkeypatch.setattr(
+        main,
+        "RASTER_DIRECTORY",
+        raster_directory,
+    )
+
+    # Mock raster export to avoid real Earth Engine requests.
+    exported_files = [
+        raster_directory / "ndvi_before.tif",
+        raster_directory / "ndvi_after.tif",
+        raster_directory / "ndvi_difference.tif",
+        raster_directory / "metadata.json",
+    ]
+
+    monkeypatch.setattr(
+        main,
+        "export_ndvi_rasters",
+        lambda **kwargs: exported_files,
     )
 
     def fake_analysis(bounds, periods, output_path):
@@ -196,8 +218,29 @@ def test_ndvi_post_runs_analysis(
     )
 
     assert response.status_code == 200
-    assert response.json()["message"] == "Satellite analysis completed."
-    assert response.json()["record_count"] == 2
+
+    response_data = response.json()
+
+    assert response_data["message"] == (
+        "Satellite analysis and raster export completed."
+    )
+
+    assert response_data["record_count"] == 2
+
+    assert response_data["raster_export"]["status"] == "completed"
+
+    assert response_data["raster_export"]["layers"] == [
+        "before",
+        "after",
+        "difference",
+    ]
+
+    assert response_data["raster_export"]["files"] == [
+        "ndvi_before.tif",
+        "ndvi_after.tif",
+        "ndvi_difference.tif",
+        "metadata.json",
+    ]
 
     mock_initialize.assert_called_once()
     mock_run_analysis.assert_called_once()
@@ -216,6 +259,7 @@ def test_ndvi_post_handles_earth_engine_failure(
     )
 
     assert response.status_code == 502
+
     assert "Satellite analysis could not be completed" in (
         response.json()["detail"]
     )
