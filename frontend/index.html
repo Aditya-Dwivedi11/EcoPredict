@@ -7,11 +7,19 @@
 
     <title>EcoPredict | Environmental Intelligence</title>
 
+    <!-- Leaflet CSS -->
     <link
         rel="stylesheet"
         href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     >
 
+    <!-- Leaflet Draw CSS -->
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"
+    >
+
+    <!-- EcoPredict CSS -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 
@@ -29,6 +37,7 @@
                 </div>
             </div>
 
+            <!-- Study Region Search -->
             <div class="sidebar-section">
                 <label>STUDY REGION</label>
 
@@ -37,30 +46,54 @@
                         type="text"
                         id="region-search"
                         placeholder="Search a location..."
+                        autocomplete="off"
                     >
-                    <button id="search-button">Search</button>
+
+                    <button id="search-button" type="button">
+                        Search
+                    </button>
                 </div>
 
                 <p class="helper-text">
                     Search for a city or geographic location.
                 </p>
+
+                <p class="helper-text">
+                    After searching, draw a rectangle on the map
+                    to select your study area.
+                </p>
             </div>
 
+            <!-- Satellite Analysis -->
             <div class="sidebar-section">
                 <label>SATELLITE ANALYSIS</label>
 
                 <div class="layer-controls">
-                    <button class="layer-button active" data-layer="before">
+
+                    <button
+                        class="layer-button active"
+                        data-layer="before"
+                        type="button"
+                    >
                         Before
                     </button>
 
-                    <button class="layer-button" data-layer="after">
+                    <button
+                        class="layer-button"
+                        data-layer="after"
+                        type="button"
+                    >
                         After
                     </button>
 
-                    <button class="layer-button" data-layer="difference">
+                    <button
+                        class="layer-button"
+                        data-layer="difference"
+                        type="button"
+                    >
                         Difference
                     </button>
+
                 </div>
 
                 <p id="layer-description" class="helper-text">
@@ -68,6 +101,7 @@
                 </p>
             </div>
 
+            <!-- Analysis Period -->
             <div class="sidebar-section">
                 <label>ANALYSIS PERIOD</label>
 
@@ -82,6 +116,7 @@
                 </div>
             </div>
 
+            <!-- Vegetation Indicators -->
             <div class="sidebar-section">
                 <label>VEGETATION INDICATORS</label>
 
@@ -106,6 +141,7 @@
                 </div>
             </div>
 
+            <!-- Sidebar Footer -->
             <div class="sidebar-footer">
                 <span class="status-dot"></span>
                 Satellite data interface
@@ -114,23 +150,30 @@
 
         </aside>
 
-        <!-- Main dashboard -->
+        <!-- Main Dashboard -->
         <main class="main-content">
 
             <header class="topbar">
+
                 <div>
                     <h2>Environmental Monitoring</h2>
                     <p>Satellite-derived vegetation intelligence</p>
                 </div>
 
-                <div class="location-label" id="location-label">
+                <div
+                    class="location-label"
+                    id="location-label"
+                >
                     Initial study area: Kanpur, India
                 </div>
+
             </header>
 
+            <!-- Satellite Map -->
             <section class="map-section">
 
                 <div class="map-toolbar">
+
                     <div>
                         <strong>Satellite NDVI Map</strong>
                         <span id="map-layer-label">Before</span>
@@ -139,30 +182,51 @@
                     <div class="map-legend">
                         <span class="legend-low"></span>
                         Low vegetation
+
                         <span class="legend-high"></span>
                         High vegetation
                     </div>
+
                 </div>
 
+                <!-- Leaflet Map -->
                 <div id="map"></div>
 
                 <div class="map-caption">
                     Visualization of satellite-derived NDVI.
-                    This layer represents vegetation greenness, not a
-                    direct measurement of vegetation health.
+                    This layer represents vegetation greenness,
+                    not a direct measurement of vegetation health.
                 </div>
 
             </section>
 
+            <!-- Dashboard Footer -->
             <footer class="dashboard-footer">
+
                 <span>EcoPredict v0.1.0</span>
-                <span id="system-status">Connecting to API...</span>
+
+                <span id="system-status">
+                    Connecting to API...
+                </span>
+
             </footer>
 
         </main>
+
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet JavaScript -->
+    <script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+    </script>
+
+    <!-- Leaflet Draw JavaScript -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js">
+    </script>
+
+    <!-- EcoPredict Application JavaScript -->
     <script src="/static/js/app.js"></script>
+
 </body>
 </html>
