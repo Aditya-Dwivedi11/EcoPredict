@@ -1,6 +1,7 @@
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -24,24 +25,32 @@
 </head>
 
 <body>
+
     <div class="app-container">
 
         <!-- Sidebar -->
         <aside class="sidebar">
 
+            <!-- Brand -->
             <div class="brand">
+
                 <div class="brand-icon">E</div>
+
                 <div>
                     <h1>EcoPredict</h1>
                     <p>ENVIRONMENTAL INTELLIGENCE</p>
                 </div>
+
             </div>
+
 
             <!-- Study Region Search -->
             <div class="sidebar-section">
+
                 <label>STUDY REGION</label>
 
                 <div class="search-box">
+
                     <input
                         type="text"
                         id="region-search"
@@ -49,9 +58,13 @@
                         autocomplete="off"
                     >
 
-                    <button id="search-button" type="button">
+                    <button
+                        id="search-button"
+                        type="button"
+                    >
                         Search
                     </button>
+
                 </div>
 
                 <p class="helper-text">
@@ -62,10 +75,13 @@
                     After searching, draw a rectangle on the map
                     to select your study area.
                 </p>
+
             </div>
 
-            <!-- Satellite Analysis -->
+
+            <!-- Satellite Layer Controls -->
             <div class="sidebar-section">
+
                 <label>SATELLITE ANALYSIS</label>
 
                 <div class="layer-controls">
@@ -96,68 +112,198 @@
 
                 </div>
 
-                <p id="layer-description" class="helper-text">
+                <p
+                    id="layer-description"
+                    class="helper-text"
+                >
                     Earlier satellite observation.
                 </p>
+
             </div>
 
-            <!-- Analysis Period -->
+
+            <!-- Current Analysis Period -->
             <div class="sidebar-section">
-                <label>ANALYSIS PERIOD</label>
+
+                <label>CURRENT ANALYSIS PERIOD</label>
 
                 <div class="period-card">
+
                     <span>Before</span>
-                    <strong id="before-period">Loading...</strong>
+
+                    <strong id="before-period">
+                        Loading...
+                    </strong>
+
                 </div>
 
                 <div class="period-card">
+
                     <span>After</span>
-                    <strong id="after-period">Loading...</strong>
+
+                    <strong id="after-period">
+                        Loading...
+                    </strong>
+
                 </div>
+
             </div>
+
+
+            <!-- Custom Satellite Analysis -->
+            <div class="sidebar-section">
+
+                <label>CUSTOM SATELLITE ANALYSIS</label>
+
+                <!-- Before Period -->
+                <div class="analysis-date-group">
+
+                    <label for="before-start">
+                        Before Period Start
+                    </label>
+
+                    <input
+                        type="date"
+                        id="before-start"
+                        required
+                    >
+
+                </div>
+
+                <div class="analysis-date-group">
+
+                    <label for="before-end">
+                        Before Period End
+                    </label>
+
+                    <input
+                        type="date"
+                        id="before-end"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- After Period -->
+                <div class="analysis-date-group">
+
+                    <label for="after-start">
+                        After Period Start
+                    </label>
+
+                    <input
+                        type="date"
+                        id="after-start"
+                        required
+                    >
+
+                </div>
+
+                <div class="analysis-date-group">
+
+                    <label for="after-end">
+                        After Period End
+                    </label>
+
+                    <input
+                        type="date"
+                        id="after-end"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Run Analysis -->
+                <button
+                    type="button"
+                    id="run-analysis-button"
+                    class="run-analysis-button"
+                >
+                    Run Satellite Analysis
+                </button>
+
+                <p
+                    class="helper-text"
+                    id="analysis-message"
+                    aria-live="polite"
+                >
+                    Select a study area and analysis dates before running.
+                </p>
+
+            </div>
+
 
             <!-- Vegetation Indicators -->
             <div class="sidebar-section">
+
                 <label>VEGETATION INDICATORS</label>
 
                 <div class="metric-card">
+
                     <span>Mean NDVI — Before</span>
+
                     <strong id="before-ndvi">--</strong>
+
                 </div>
 
                 <div class="metric-card">
+
                     <span>Mean NDVI — After</span>
+
                     <strong id="after-ndvi">--</strong>
+
                 </div>
 
                 <div class="metric-card">
+
                     <span>Mean NDVI Change</span>
+
                     <strong id="ndvi-change">--</strong>
+
                 </div>
 
                 <div class="metric-card">
+
                     <span>Valid Pixels</span>
+
                     <strong id="valid-pixels">--</strong>
+
                 </div>
+
             </div>
+
 
             <!-- Sidebar Footer -->
             <div class="sidebar-footer">
+
                 <span class="status-dot"></span>
+
                 Satellite data interface
+
                 <p>Source: Sentinel-2</p>
+
             </div>
 
         </aside>
 
+
         <!-- Main Dashboard -->
         <main class="main-content">
 
+
+            <!-- Top Navigation -->
             <header class="topbar">
 
                 <div>
+
                     <h2>Environmental Monitoring</h2>
-                    <p>Satellite-derived vegetation intelligence</p>
+
+                    <p>
+                        Satellite-derived vegetation intelligence
+                    </p>
+
                 </div>
 
                 <div
@@ -169,36 +315,55 @@
 
             </header>
 
-            <!-- Satellite Map -->
+
+            <!-- Satellite Map Section -->
             <section class="map-section">
 
+
+                <!-- Map Toolbar -->
                 <div class="map-toolbar">
 
                     <div>
+
                         <strong>Satellite NDVI Map</strong>
-                        <span id="map-layer-label">Before</span>
+
+                        <span id="map-layer-label">
+                            Before
+                        </span>
+
                     </div>
 
                     <div class="map-legend">
+
                         <span class="legend-low"></span>
+
                         Low vegetation
 
                         <span class="legend-high"></span>
+
                         High vegetation
+
                     </div>
 
                 </div>
+
 
                 <!-- Leaflet Map -->
                 <div id="map"></div>
 
+
+                <!-- Map Caption -->
                 <div class="map-caption">
+
                     Visualization of satellite-derived NDVI.
+
                     This layer represents vegetation greenness,
                     not a direct measurement of vegetation health.
+
                 </div>
 
             </section>
+
 
             <!-- Dashboard Footer -->
             <footer class="dashboard-footer">
@@ -215,18 +380,22 @@
 
     </div>
 
+
     <!-- Leaflet JavaScript -->
     <script
         src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
     </script>
+
 
     <!-- Leaflet Draw JavaScript -->
     <script
         src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js">
     </script>
 
+
     <!-- EcoPredict Application JavaScript -->
     <script src="/static/js/app.js"></script>
 
 </body>
+
 </html>
