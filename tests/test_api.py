@@ -265,3 +265,27 @@ def test_ndvi_post_handles_earth_engine_failure(
     )
 
     mock_initialize.assert_called_once()
+
+@patch("ecopredict.main.initialize_earth_engine")
+def test_ndvi_post_rejects_oversized_study_area(
+    mock_initialize,
+):
+    payload = valid_analysis_request()
+
+    # Approximately 6,256 km².
+    payload["west"] = 79.5
+    payload["south"] = 25.5
+    payload["east"] = 80.5
+    payload["north"] = 26.5
+
+    response = client.post(
+        "/api/v1/ndvi-analysis",
+        json=payload,
+    )
+
+    assert response.status_code == 400
+
+    assert "Study area is too large" in response.json()["detail"]
+    assert "5,000 km²" in response.json()["detail"]
+
+    mock_initialize.assert_called_once()

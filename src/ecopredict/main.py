@@ -325,7 +325,11 @@ def create_ndvi_analysis(
 
     except HTTPException:
         raise
-
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
 
         logger.exception(
