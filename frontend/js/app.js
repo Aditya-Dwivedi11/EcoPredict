@@ -1010,92 +1010,180 @@ function setupAnalysisControls() {
 
 async function runSatelliteAnalysis() {
 
-    if (analysisInProgress) {
-        return;
-    }
+    if (analysisInProgress) return;
 
-    const button =
-        document.getElementById("run-analysis-button");
-
+    const button = document.getElementById("run-analysis-button");
     let requestData;
 
     try {
-
         requestData = getAnalysisRequest();
-
     } catch (error) {
-
         updateAnalysisMessage(error.message, true);
-
         updateStatus("Analysis input validation failed.", true);
-
         return;
     }
 
     analysisInProgress = true;
-
     button.disabled = true;
-
-    button.textContent = "Running Satellite Analysis...";
+    button.textContent = "Submitting Analysis...";
 
     updateAnalysisMessage(
-        "Connecting to Google Earth Engine. This may take several minutes."
+        "Submitting satellite analysis. The map will update automatically when processing is complete."
     );
+    updateStatus("Submitting satellite analysis...");
 
-    updateStatus("Satellite analysis in progress...");
+    async function readJsonResponse(response) {
+        const responseText = await response.text();
 
-    console.log(
-        "Submitting EcoPredict analysis request:",
-        requestData
-    );
+        if (!responseText) return {};
+
+        try {
+            return JSON.parse(responseText);
+        } catch {
+            throw new Error(
+                `Server returned an invalid response (HTTP ${response.status}).`
+            );
+        }
+    }
+
+    const wait = milliseconds =>
+        new Promise(resolve => setTimeout(resolve, milliseconds));
 
     try {
-
-        const response = await fetch(
+        // Submit analysis request
+        const submitResponse = await fetch(
             `${API_BASE}/api/v1/ndvi-analysis`,
             {
                 method: "POST",
-
                 headers: {
                     "Content-Type": "application/json"
                 },
-
                 body: JSON.stringify(requestData)
             }
         );
 
-        const result = await response.json();
+        const submission = await readJsonResponse(submitResponse);
 
-        if (!response.ok) {
-
-            const detail =
-                typeof result.detail === "string"
-                    ? result.detail
-                    : JSON.stringify(result.detail);
+        if (!submitResponse.ok) {
+            const detail = typeof submission.detail === "string"
+                ? submission.detail
+                : JSON.stringify(submission.detail);
 
             throw new Error(
-                detail || `Analysis failed with HTTP ${response.status}`
+                detail || `Analysis submission failed with HTTP ${submitResponse.status}.`
             );
         }
 
-        console.log(
-            "Satellite analysis response:",
-            result
-        );
+        if (!submission.job_id) {
+            throw new Error("The server did not return an analysis job ID.");
+        }
+
+        const jobId = submission.job_id;
+
+        console.log("EcoPredict analysis job submitted:", submission);
 
         updateAnalysisMessage(
-            "Satellite analysis completed. Refreshing map and statistics..."
+            "Analysis queued. Waiting for satellite processing to start..."
         );
+        updateStatus("Satellite analysis queued...");
 
-        // Load the new metadata and raster outputs.
-        await loadMetadata(true);
+        // Poll the backend for job status
+        const pollingInterval = 3000;
+        const maximumWait = 30 * 60 * 1000;
+        const startedAt = Date.now();
 
-        updateAnalysisMessage(
-            "Analysis completed successfully. NDVI maps and statistics have been updated."
-        );
+        while (Date.now() - startedAt < maximumWait) {
 
-        updateStatus(
-            "New satellite analysis completed successfully."
+            await wait(pollingInterval);
+
+            const statusResponse = await fetch(
+                `${API_BASE}/api/v1/ndvi-analysis/${encodeURIComponent(jobId)}`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+            const job = await readJsonResponse(statusResponse);
+
+            if (!statusResponse.ok) {
+                const detail = typeof job.detail === "string"
+                    ? job.detail
+                    : JSON.stringify(job.detail);
+
+                throw new Error(
+                    detail || `Could not check analysis status (HTTP ${statusResponse.status}).`
+                );
+            }
+
+            console.log("EcoPredict analysis job status:", job);
+
+            // Job is waiting in queue
+            if (job.status === "queued") {
+
+                updateAnalysisMessage(
+                    "Analysis is queued and will start shortly..."
+                );
+
+                updateStatus("Satellite analysis queued...");
+                button.textContent = "Analysis Queued...";
+
+                continue;
+            }
+
+            // Job is currently processing
+            if (job.status === "running") {
+
+                updateAnalysisMessage(
+                    "Satellite analysis is running. This may take several minutes; please keep this page open."
+                );
+
+                updateStatus("Processing satellite imagery...");
+                button.textContent = "Processing Satellite Data...";
+
+                continue;
+            }
+
+            // Job failed
+            if (job.status === "failed") {
+                throw new Error(
+                    job.error || "Satellite analysis failed on the server."
+                );
+            }
+
+            // Job completed successfully
+            if (job.status === "completed") {
+
+                console.log(
+                    "EcoPredict analysis completed:",
+                    job.result
+                );
+
+                updateAnalysisMessage(
+                    "Satellite analysis completed. Refreshing map and statistics..."
+                );
+
+                updateStatus("Refreshing satellite maps...");
+
+                await loadMetadata(true);
+
+                updateAnalysisMessage(
+                    "Analysis completed successfully. NDVI maps and statistics have been updated."
+                );
+
+                updateStatus(
+                    "New satellite analysis completed successfully."
+                );
+
+                return;
+            }
+
+            throw new Error(
+                `The server returned an unknown analysis status: ${job.status || "missing status"}.`
+            );
+        }
+
+        throw new Error(
+            "Analysis is taking longer than 30 minutes. Check the server logs before submitting another analysis."
         );
 
     } catch (error) {
@@ -1124,6 +1212,9 @@ async function runSatelliteAnalysis() {
         button.textContent = "Run Satellite Analysis";
     }
 }
+
+
+
 
 
 // ==================================================

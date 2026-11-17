@@ -5,9 +5,10 @@ import json
 import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
@@ -24,6 +25,7 @@ from ecopredict.satellite import (
 from ecopredict.validation import (
     validate_bounds,
     validate_period,
+    validate_study_area,
 )
 
 
@@ -55,6 +57,14 @@ app = FastAPI(
     ),
     version="0.1.0",
 )
+
+
+# --------------------------------------------------
+# Background analysis job storage
+# --------------------------------------------------
+
+# In-memory storage for the current single-process application.
+analysis_jobs = {}
 
 
 # --------------------------------------------------
@@ -233,34 +243,21 @@ def get_ndvi_analysis():
         ) from exc
 
 
-@app.post("/api/v1/ndvi-analysis")
-def create_ndvi_analysis(
-    request: NDVIAnalysisRequest,
-):
-    """
-    Run satellite NDVI analysis and export raster layers
-    for the requested geographical area and periods.
-    """
+# --------------------------------------------------
+# Background satellite processing
+# --------------------------------------------------
 
-    bounds = (
-        request.west,
-        request.south,
-        request.east,
-        request.north,
-    )
-
-    periods = [
-        (
-            request.before_start,
-            request.before_end,
-        ),
-        (
-            request.after_start,
-            request.after_end,
-        ),
-    ]
+def process_ndvi_analysis(job_id, bounds, periods):
+    """Execute satellite analysis and raster export in the background."""
 
     try:
+
+        analysis_jobs[job_id]["status"] = "running"
+
+        logger.info(
+            "Starting background NDVI analysis: %s",
+            job_id,
+        )
 
         # Step 1: Initialize Google Earth Engine.
         initialize_earth_engine()
@@ -273,7 +270,6 @@ def create_ndvi_analysis(
         )
 
         # Step 3: Export Before, After and Difference rasters.
-        # This updates the GeoTIFF files and metadata used by the map.
         exported_files = export_ndvi_rasters(
             bounds=bounds,
             periods=periods,
@@ -287,17 +283,15 @@ def create_ndvi_analysis(
         )
 
         if results.empty:
-
-            raise HTTPException(
-                status_code=422,
-                detail="Satellite analysis produced no result records.",
+            raise ValueError(
+                "Satellite analysis produced no result records."
             )
 
         records = json.loads(
             results.to_json(orient="records")
         )
 
-        return {
+        result_data = {
             "project": "EcoPredict",
             "message": (
                 "Satellite analysis and raster export completed."
@@ -323,28 +317,117 @@ def create_ndvi_analysis(
             },
         }
 
-    except HTTPException:
-        raise
+        analysis_jobs[job_id].update({
+            "status": "completed",
+            "result": result_data,
+            "error": None,
+        })
+
+        logger.info(
+            "Background NDVI analysis completed: %s",
+            job_id,
+        )
+
+    except Exception as exc:
+
+        logger.exception(
+            "Background satellite analysis failed: %s",
+            job_id,
+        )
+
+        analysis_jobs[job_id].update({
+            "status": "failed",
+            "result": None,
+            "error": str(exc),
+        })
+
+
+# --------------------------------------------------
+# Submit NDVI analysis
+# --------------------------------------------------
+
+@app.post(
+    "/api/v1/ndvi-analysis",
+    status_code=202,
+)
+def create_ndvi_analysis(
+    request: NDVIAnalysisRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Submit satellite NDVI analysis as a background job."""
+
+    bounds = (
+        request.west,
+        request.south,
+        request.east,
+        request.north,
+    )
+
+    periods = [
+        (
+            request.before_start,
+            request.before_end,
+        ),
+        (
+            request.after_start,
+            request.after_end,
+        ),
+    ]
+
+    # Validate study area before starting the background task.
+    try:
+
+        validate_study_area(bounds)
+
     except ValueError as exc:
+
         raise HTTPException(
             status_code=400,
             detail=str(exc),
         ) from exc
-    except Exception as exc:
 
-        logger.exception(
-            "Satellite analysis or raster export failed."
-        )
+    # Generate a unique job identifier.
+    job_id = str(uuid4())
+
+    analysis_jobs[job_id] = {
+        "status": "queued",
+        "result": None,
+        "error": None,
+    }
+
+    # Submit the satellite processing task.
+    background_tasks.add_task(
+        process_ndvi_analysis,
+        job_id,
+        bounds,
+        periods,
+    )
+
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": "Satellite analysis has been submitted.",
+    }
+
+
+# --------------------------------------------------
+# Check background analysis status
+# --------------------------------------------------
+
+@app.get("/api/v1/ndvi-analysis/{job_id}")
+def get_analysis_status(job_id: str):
+    """Return the current status of a background analysis job."""
+
+    job = analysis_jobs.get(job_id)
+
+    if job is None:
 
         raise HTTPException(
-            status_code=502,
-            detail=(
-                "Satellite analysis could not be completed. "
-                "The analysis or raster export failed. "
-                "Check Earth Engine authentication, project configuration, "
-                "permissions, data availability, and raster export limits."
-            ),
-        ) from exc
+            status_code=404,
+            detail="Analysis job not found.",
+        )
+
+    return job
 
 
 # --------------------------------------------------

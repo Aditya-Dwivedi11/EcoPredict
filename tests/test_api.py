@@ -178,7 +178,6 @@ def test_ndvi_post_runs_analysis(
         raster_directory,
     )
 
-    # Mock raster export to avoid real Earth Engine requests.
     exported_files = [
         raster_directory / "ndvi_before.tif",
         raster_directory / "ndvi_after.tif",
@@ -217,25 +216,32 @@ def test_ndvi_post_runs_analysis(
         json=valid_analysis_request(),
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
 
-    response_data = response.json()
+    submission = response.json()
+    assert submission["status"] == "queued"
+    assert "job_id" in submission
 
-    assert response_data["message"] == (
-        "Satellite analysis and raster export completed."
+    job_response = client.get(
+        f"/api/v1/ndvi-analysis/{submission['job_id']}"
     )
 
-    assert response_data["record_count"] == 2
+    assert job_response.status_code == 200
 
-    assert response_data["raster_export"]["status"] == "completed"
+    job_data = job_response.json()
 
-    assert response_data["raster_export"]["layers"] == [
+    assert job_data["status"] == "completed"
+    assert job_data["result"]["record_count"] == 2
+
+    assert job_data["result"]["raster_export"]["status"] == "completed"
+
+    assert job_data["result"]["raster_export"]["layers"] == [
         "before",
         "after",
         "difference",
     ]
 
-    assert response_data["raster_export"]["files"] == [
+    assert job_data["result"]["raster_export"]["files"] == [
         "ndvi_before.tif",
         "ndvi_after.tif",
         "ndvi_difference.tif",
@@ -258,13 +264,24 @@ def test_ndvi_post_handles_earth_engine_failure(
         json=valid_analysis_request(),
     )
 
-    assert response.status_code == 502
+    assert response.status_code == 202
 
-    assert "Satellite analysis could not be completed" in (
-        response.json()["detail"]
+    submission = response.json()
+    assert "job_id" in submission
+
+    job_response = client.get(
+        f"/api/v1/ndvi-analysis/{submission['job_id']}"
     )
 
+    assert job_response.status_code == 200
+
+    job_data = job_response.json()
+
+    assert job_data["status"] == "failed"
+    assert "Earth Engine unavailable" in job_data["error"]
+
     mock_initialize.assert_called_once()
+
 
 @patch("ecopredict.main.initialize_earth_engine")
 def test_ndvi_post_rejects_oversized_study_area(
@@ -288,4 +305,5 @@ def test_ndvi_post_rejects_oversized_study_area(
     assert "Study area is too large" in response.json()["detail"]
     assert "5,000 km²" in response.json()["detail"]
 
-    mock_initialize.assert_called_once()
+    # Earth Engine must not initialize for an invalid study area.
+    mock_initialize.assert_not_called()
