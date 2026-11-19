@@ -274,6 +274,76 @@
 
             </div>
 
+<!-- Environmental Hazard Analysis -->
+<div class="sidebar-section environmental-section">
+
+    <label>ENVIRONMENTAL HAZARD ANALYSIS</label>
+
+    <p class="helper-text">
+        Analyze satellite-derived environmental indicators for your selected study area.
+    </p>
+
+    <select id="environmental-hazard" class="environmental-input">
+        <option value="air_pollution">Air Pollution — Sentinel-5P NO₂</option>
+        <option value="flood">Flood Indicator — Sentinel-1</option>
+        <option value="heatwave">Land Surface Temperature — MODIS</option>
+        <option value="deforestation">Vegetation Indicator — Sentinel-2</option>
+    </select>
+
+    <label for="environmental-start-date">START DATE</label>
+    <input
+        type="date"
+        id="environmental-start-date"
+        class="environmental-input"
+    >
+
+    <label for="environmental-end-date">END DATE</label>
+    <input
+        type="date"
+        id="environmental-end-date"
+        class="environmental-input"
+    >
+
+    <button
+        type="button"
+        id="run-environmental-button"
+        class="run-analysis-button"
+    >
+        Run Environmental Analysis
+    </button>
+
+    <p
+        id="environmental-message"
+        class="helper-text"
+        aria-live="polite"
+    >
+        Select a study area and date range to begin.
+    </p>
+
+    <div class="metric-card">
+        <span>Satellite Indicator</span>
+        <strong id="environmental-indicator">--</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Mean Measurement</span>
+        <strong id="environmental-mean">--</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Satellite Images</span>
+        <strong id="environmental-image-count">--</strong>
+    </div>
+
+    <p
+        id="environmental-disclaimer"
+        class="helper-text"
+    >
+        Results are satellite-derived indicators, not validated hazard-risk predictions.
+    </p>
+
+</div>
+
 
             <!-- Sidebar Footer -->
             <div class="sidebar-footer">

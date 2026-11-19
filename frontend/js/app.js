@@ -1215,6 +1215,388 @@ async function runSatelliteAnalysis() {
 
 
 
+// ==================================================
+// Environmental Analysis
+// ==================================================
+
+let environmentalAnalysisInProgress = false;
+
+
+function setupEnvironmentalControls() {
+
+    const button = document.getElementById(
+        "run-environmental-button"
+    );
+
+    const startInput = document.getElementById(
+        "environmental-start-date"
+    );
+
+    const endInput = document.getElementById(
+        "environmental-end-date"
+    );
+
+    if (!button || !startInput || !endInput) {
+        console.warn("Environmental analysis controls not found.");
+        return;
+    }
+
+    // Default environmental analysis period.
+    startInput.value = "2024-10-01";
+    endInput.value = "2024-11-01";
+
+    button.addEventListener(
+        "click",
+        runEnvironmentalAnalysis
+    );
+}
+
+
+function updateEnvironmentalMessage(message, isError = false) {
+
+    const element = document.getElementById(
+        "environmental-message"
+    );
+
+    element.textContent = message;
+
+    element.style.color = isError
+        ? "var(--danger)"
+        : "var(--text-secondary)";
+}
+
+
+function displayEnvironmentalResult(result) {
+
+    const indicatorElement = document.getElementById(
+        "environmental-indicator"
+    );
+
+    const meanElement = document.getElementById(
+        "environmental-mean"
+    );
+
+    const countElement = document.getElementById(
+        "environmental-image-count"
+    );
+
+    indicatorElement.textContent =
+        result.indicator || "--";
+
+    countElement.textContent =
+        result.image_count ?? "--";
+
+    if (result.status === "no_data" || result.mean === null) {
+
+        meanElement.textContent = "No data";
+
+        updateEnvironmentalMessage(
+            result.message || "No valid satellite measurements found."
+        );
+
+        return;
+    }
+
+    if (result.status !== "ok") {
+        throw new Error("The server returned an invalid measurement status.");
+    }
+
+    let value;
+    let unit = result.unit || "";
+
+    if (result.hazard === "heatwave") {
+
+        value = Number(result.mean_celsius).toFixed(2);
+        unit = "°C";
+
+    } else if (result.hazard === "air_pollution") {
+
+        value = Number(result.mean).toExponential(3);
+
+    } else if (result.hazard === "flood") {
+
+        value = Number(result.mean).toFixed(2);
+
+    } else {
+
+        value = Number(result.mean).toFixed(4);
+    }
+
+    meanElement.textContent = `${value} ${unit}`;
+
+    updateEnvironmentalMessage(
+        `Analysis completed. ${result.image_count} satellite images processed.`
+    );
+}
+
+
+async function runEnvironmentalAnalysis() {
+
+    if (environmentalAnalysisInProgress) return;
+
+    const button = document.getElementById(
+        "run-environmental-button"
+    );
+
+    const hazard = document.getElementById(
+        "environmental-hazard"
+    ).value;
+
+    const startDate = document.getElementById(
+        "environmental-start-date"
+    ).value;
+
+    const endDate = document.getElementById(
+        "environmental-end-date"
+    ).value;
+
+    // Validate study area.
+    if (!selectedStudyBounds) {
+
+        updateEnvironmentalMessage(
+            "Please draw a rectangle to select your study area.",
+            true
+        );
+
+        return;
+    }
+
+    // Validate dates.
+    if (!startDate || !endDate) {
+
+        updateEnvironmentalMessage(
+            "Please select both analysis dates.",
+            true
+        );
+
+        return;
+    }
+
+    if (new Date(`${startDate}T00:00:00Z`) >
+        new Date(`${endDate}T00:00:00Z`)) {
+
+        updateEnvironmentalMessage(
+            "Start date must be before or equal to end date.",
+            true
+        );
+
+        return;
+    }
+
+    const requestData = {
+        hazard: hazard,
+
+        west: selectedStudyBounds.west,
+        south: selectedStudyBounds.south,
+        east: selectedStudyBounds.east,
+        north: selectedStudyBounds.north,
+
+        start_date: startDate,
+        end_date: endDate
+    };
+
+    environmentalAnalysisInProgress = true;
+
+    button.disabled = true;
+    button.textContent = "Submitting...";
+
+    updateEnvironmentalMessage(
+        "Submitting environmental analysis..."
+    );
+
+    // Clear previous measurements.
+    document.getElementById(
+        "environmental-indicator"
+    ).textContent = "--";
+
+    document.getElementById(
+        "environmental-mean"
+    ).textContent = "--";
+
+    document.getElementById(
+        "environmental-image-count"
+    ).textContent = "--";
+
+
+    async function readJsonResponse(response) {
+
+        const responseText = await response.text();
+
+        if (!responseText) return {};
+
+        try {
+            return JSON.parse(responseText);
+        } catch {
+            throw new Error(
+                `Invalid server response (HTTP ${response.status}).`
+            );
+        }
+    }
+
+
+    const wait = milliseconds =>
+        new Promise(resolve => setTimeout(resolve, milliseconds));
+
+
+    try {
+
+        // Submit environmental analysis.
+        const submitResponse = await fetch(
+            `${API_BASE}/api/v1/environmental-analysis`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify(requestData)
+            }
+        );
+
+        const submission = await readJsonResponse(
+            submitResponse
+        );
+
+        if (!submitResponse.ok) {
+
+            throw new Error(
+                submission.detail ||
+                `Submission failed with HTTP ${submitResponse.status}.`
+            );
+        }
+
+        if (!submission.job_id) {
+            throw new Error("Server did not return a job ID.");
+        }
+
+        const jobId = submission.job_id;
+
+        console.log(
+            "Environmental analysis submitted:",
+            submission
+        );
+
+        updateEnvironmentalMessage(
+            "Analysis queued. Waiting for satellite processing..."
+        );
+
+        // Poll job status.
+        const pollingInterval = 3000;
+        const maximumWait = 30 * 60 * 1000;
+        const startedAt = Date.now();
+
+        while (Date.now() - startedAt < maximumWait) {
+
+            await wait(pollingInterval);
+
+            const statusResponse = await fetch(
+                `${API_BASE}/api/v1/environmental-analysis/${encodeURIComponent(jobId)}`,
+                {
+                    cache: "no-store"
+                }
+            );
+
+            const job = await readJsonResponse(
+                statusResponse
+            );
+
+            if (!statusResponse.ok) {
+
+                throw new Error(
+                    job.detail ||
+                    `Could not check job status (HTTP ${statusResponse.status}).`
+                );
+            }
+
+            console.log(
+                "Environmental analysis status:",
+                job
+            );
+
+            if (job.status === "queued") {
+
+                button.textContent = "Queued...";
+
+                updateEnvironmentalMessage(
+                    "Analysis is queued and will start shortly..."
+                );
+
+                continue;
+            }
+
+            if (job.status === "running") {
+
+                button.textContent = "Processing...";
+
+                updateEnvironmentalMessage(
+                    "Processing satellite imagery. This may take several minutes..."
+                );
+
+                continue;
+            }
+
+            if (job.status === "failed") {
+
+                throw new Error(
+                    job.error || "Environmental analysis failed."
+                );
+            }
+
+            if (job.status === "completed") {
+
+                const result = job.result;
+
+                if (!result || !result.data) {
+                    throw new Error(
+                        "The server returned an incomplete analysis result."
+                    );
+                }
+
+                displayEnvironmentalResult(result.data);
+
+                console.log(
+                    "Environmental analysis completed:",
+                    result
+                );
+
+                return;
+            }
+
+            throw new Error(
+                `Unknown job status: ${job.status || "missing status"}.`
+            );
+        }
+
+        throw new Error(
+            "Analysis exceeded 30 minutes. Check server logs."
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Environmental analysis failed:",
+            error
+        );
+
+        updateEnvironmentalMessage(
+            `Analysis failed: ${error.message}`,
+            true
+        );
+
+    } finally {
+
+        environmentalAnalysisInProgress = false;
+
+        button.disabled = false;
+
+        button.textContent =
+            "Run Environmental Analysis";
+    }
+}
+
+
+
 
 
 // ==================================================
@@ -1244,6 +1626,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setupDateInputs();
 
     setupAnalysisControls();
+
+    setupEnvironmentalControls();
 
     loadMetadata().catch(error => {
         console.error("Initial dashboard loading failed:", error);

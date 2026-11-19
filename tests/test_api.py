@@ -307,3 +307,110 @@ def test_ndvi_post_rejects_oversized_study_area(
 
     # Earth Engine must not initialize for an invalid study area.
     mock_initialize.assert_not_called()
+
+
+def valid_environmental_request():
+    return {
+        "hazard": "air_pollution",
+        "west": 80.20,
+        "south": 26.38,
+        "east": 80.45,
+        "north": 26.55,
+        "start_date": "2025-10-01",
+        "end_date": "2025-11-01",
+    }
+
+
+def test_environmental_post_rejects_invalid_hazard():
+    payload = valid_environmental_request()
+    payload["hazard"] = "invalid_hazard"
+
+    response = client.post(
+        "/api/v1/environmental-analysis",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_environmental_post_runs_analysis(monkeypatch):
+    import ecopredict.main as main
+
+    fake_result = {
+        "hazard": "air_pollution",
+        "mean": 0.00012,
+        "unit": "mol/m²",
+        "scene_count": 5,
+    }
+
+    monkeypatch.setattr(
+        main,
+        "analyze_environmental_indicator",
+        lambda **kwargs: fake_result,
+    )
+
+    response = client.post(
+        "/api/v1/environmental-analysis",
+        json=valid_environmental_request(),
+    )
+
+    assert response.status_code == 202
+
+    submission = response.json()
+
+    assert submission["status"] == "queued"
+    assert submission["hazard"] == "air_pollution"
+    assert "job_id" in submission
+
+    job_response = client.get(
+        f"/api/v1/environmental-analysis/{submission['job_id']}"
+    )
+
+    assert job_response.status_code == 200
+
+    job = job_response.json()
+
+    assert job["status"] == "completed"
+    assert job["result"]["analysis_type"] == "satellite_indicator"
+    assert job["result"]["risk_prediction_available"] is False
+    assert job["result"]["data"] == fake_result
+
+
+def test_environmental_analysis_handles_failure(monkeypatch):
+    import ecopredict.main as main
+
+    def fake_failure(**kwargs):
+        raise RuntimeError("Mock satellite processing failure")
+
+    monkeypatch.setattr(
+        main,
+        "analyze_environmental_indicator",
+        fake_failure,
+    )
+
+    response = client.post(
+        "/api/v1/environmental-analysis",
+        json=valid_environmental_request(),
+    )
+
+    assert response.status_code == 202
+
+    job_id = response.json()["job_id"]
+
+    job_response = client.get(
+        f"/api/v1/environmental-analysis/{job_id}"
+    )
+
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "failed"
+    assert "Mock satellite processing failure" in (
+        job_response.json()["error"]
+    )
+
+
+def test_environmental_status_returns_404_for_unknown_job():
+    response = client.get(
+        "/api/v1/environmental-analysis/unknown-job-id"
+    )
+
+    assert response.status_code == 404

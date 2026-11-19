@@ -6,6 +6,7 @@ import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from typing import Literal
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -14,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from ecopredict.raster import export_ndvi_rasters
+from ecopredict.environmental import analyze_environmental_indicator
 from ecopredict.raster_visualization import (
     get_raster_metadata,
     render_raster_png,
@@ -581,3 +583,145 @@ def get_ndvi_raster_image(
             status_code=500,
             detail="Could not render the requested raster layer.",
         ) from exc
+
+
+# --------------------------------------------------
+# Environmental indicator analysis API
+# --------------------------------------------------
+
+class EnvironmentalAnalysisRequest(BaseModel):
+    hazard: Literal[
+        "air_pollution",
+        "flood",
+        "heatwave",
+        "deforestation",
+    ]
+
+    west: float = Field(ge=-180, le=180)
+    south: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+
+    start_date: str
+    end_date: str
+
+    @model_validator(mode="after")
+    def validate_environmental_inputs(self):
+        bounds = (
+            self.west,
+            self.south,
+            self.east,
+            self.north,
+        )
+
+        validate_bounds(bounds)
+        validate_period(self.start_date, self.end_date)
+        validate_study_area(bounds)
+
+        return self
+
+
+def process_environmental_analysis(job_id, hazard, bounds, start_date, end_date):
+    """Run one satellite-derived environmental indicator in the background."""
+
+    try:
+        analysis_jobs[job_id]["status"] = "running"
+
+        logger.info(
+            "Starting environmental analysis: %s (%s)",
+            job_id,
+            hazard,
+        )
+
+        result = analyze_environmental_indicator(
+            hazard=hazard,
+            bounds=bounds,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        analysis_jobs[job_id].update({
+            "status": "completed",
+            "result": {
+                "project": "EcoPredict",
+                "analysis_type": "satellite_indicator",
+                "risk_prediction_available": False,
+                "message": (
+                    "Satellite indicator extraction completed. "
+                    "This result is not a validated hazard-risk prediction."
+                ),
+                "data": result,
+            },
+            "error": None,
+        })
+
+    except Exception as exc:
+        logger.exception(
+            "Environmental analysis failed: %s",
+            job_id,
+        )
+
+        analysis_jobs[job_id].update({
+            "status": "failed",
+            "result": None,
+            "error": str(exc),
+        })
+
+
+@app.post(
+    "/api/v1/environmental-analysis",
+    status_code=202,
+)
+def create_environmental_analysis(
+    request: EnvironmentalAnalysisRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Submit a satellite-derived environmental indicator analysis."""
+
+    bounds = (
+        request.west,
+        request.south,
+        request.east,
+        request.north,
+    )
+
+    job_id = str(uuid4())
+
+    analysis_jobs[job_id] = {
+        "status": "queued",
+        "result": None,
+        "error": None,
+        "analysis_type": "environmental_indicator",
+    }
+
+    background_tasks.add_task(
+        process_environmental_analysis,
+        job_id,
+        request.hazard,
+        bounds,
+        request.start_date,
+        request.end_date,
+    )
+
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "hazard": request.hazard,
+        "message": "Environmental indicator analysis submitted.",
+    }
+
+
+@app.get("/api/v1/environmental-analysis/{job_id}")
+def get_environmental_analysis_status(job_id: str):
+    """Return the status of an environmental indicator analysis."""
+
+    job = analysis_jobs.get(job_id)
+
+    if job is None or job.get("analysis_type") != "environmental_indicator":
+        raise HTTPException(
+            status_code=404,
+            detail="Environmental analysis job not found.",
+        )
+
+    return job
+

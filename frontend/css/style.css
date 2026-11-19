@@ -385,3 +385,66 @@ button, input {
         gap: 7px;
     }
 }
+
+/* Environmental Analysis Panel */
+
+.environmental-section {
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.environmental-input {
+    width: 100%;
+    padding: 10px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    outline: none;
+    font-size: 12px;
+}
+
+.environmental-input:focus {
+    border-color: var(--accent);
+}
+
+.environmental-input option {
+    background: var(--bg-card);
+    color: var(--text-primary);
+}
+
+.environmental-section input[type="date"] {
+    color-scheme: dark;
+}
+
+#run-environmental-button {
+    width: 100%;
+    padding: 11px;
+    background: var(--accent);
+    color: #071b16;
+    border: none;
+    border-radius: 7px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+#run-environmental-button:hover {
+    background: var(--accent-hover);
+}
+
+#run-environmental-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+#environmental-indicator {
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+#environmental-disclaimer {
+    padding: 9px;
+    border-left: 2px solid var(--accent);
+    background: rgba(54, 201, 143, 0.06);
+}
