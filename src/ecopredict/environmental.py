@@ -2,7 +2,7 @@
 
 from datetime import date
 import math
-
+from urllib.request import urlopen
 import ee
 
 from ecopredict.satellite import initialize_earth_engine
@@ -126,26 +126,46 @@ def mask_modis_lst_quality(image):
 
 
 
+
 def build_indicator_image(hazard, collection):
-    """Create a single image representing the selected satellite indicator."""
+    """Create a satellite indicator while preserving native projection."""
     config = DATASET_CONFIG[hazard]
 
     if hazard == "deforestation":
         collection = collection.map(mask_sentinel2_clouds)
+
+        # Preserve Sentinel-2's native 10 m projection.
+        native_projection = (
+            collection.first().select("B8").projection()
+        )
+
         image = collection.median()
         nir = image.select("B8")
         red = image.select("B4")
-        return nir.subtract(red).divide(nir.add(red)).rename("NDVI")
+
+        return (
+            nir.subtract(red)
+            .divide(nir.add(red))
+            .rename("NDVI")
+            .setDefaultProjection(native_projection)
+        )
 
     if hazard == "heatwave":
         collection = collection.map(mask_modis_lst_quality)
 
+    # Get the native projection before creating the composite.
+    native_projection = (
+        collection.first().select(config["band"]).projection()
+    )
+
     image = collection.select(config["band"]).median()
+    image = image.setDefaultProjection(native_projection)
 
     if hazard == "heatwave":
         image = image.multiply(config["multiplier"]).rename("LST_K")
 
     return image
+
 
 
 def extract_regional_indicator(
@@ -229,3 +249,107 @@ def analyze_environmental_indicator(
         start_date=start_date,
         end_date=end_date,
     )
+
+def render_environmental_indicator_png(
+    hazard,
+    bounds,
+    start_date,
+    end_date,
+):
+    """Render a satellite-derived environmental indicator as a PNG."""
+
+    if hazard not in DATASET_CONFIG:
+        raise ValueError(f"Unsupported environmental hazard: {hazard}")
+
+    initialize_earth_engine()
+
+    collection, region = prepare_collection(
+        hazard,
+        bounds,
+        start_date,
+        end_date,
+    )
+
+    image_count = collection.size().getInfo()
+
+    if image_count == 0:
+        raise ValueError(
+            "No satellite images found for this region and period."
+        )
+
+    image = build_indicator_image(hazard, collection)
+
+    # Visualization ranges are for display only, not risk thresholds.
+    visualization = {
+        "air_pollution": {
+            "min": 0,
+            "max": 0.0001,
+            "palette": [
+                "30123b",
+                "4666d8",
+                "35b779",
+                "fde725",
+                "d7191c",
+            ],
+        },
+        "flood": {
+            "min": -25,
+            "max": 0,
+            "palette": [
+                "313695",
+                "74add1",
+                "ffffbf",
+                "f46d43",
+                "a50026",
+            ],
+        },
+        "heatwave": {
+            "min": 15,
+            "max": 45,
+            "palette": [
+                "313695",
+                "74add1",
+                "ffffbf",
+                "fdae61",
+                "a50026",
+            ],
+        },
+        "deforestation": {
+            "min": -0.2,
+            "max": 0.8,
+            "palette": [
+                "a50026",
+                "fdae61",
+                "ffffbf",
+                "a6d96a",
+                "006837",
+            ],
+        },
+    }
+
+    if hazard == "heatwave":
+        image = image.subtract(273.15).rename("LST_C")
+
+    rendered_image = image.visualize(
+        **visualization[hazard]
+    )
+
+    thumbnail_url = rendered_image.getThumbURL({
+        "region": region,
+        "dimensions": 1024,
+        "format": "png",
+    })
+
+    with urlopen(thumbnail_url, timeout=120) as response:
+        png_data = response.read()
+
+    west, south, east, north = bounds
+
+    geographic_bounds = {
+        "west": west,
+        "south": south,
+        "east": east,
+        "north": north,
+    }
+
+    return png_data, geographic_bounds

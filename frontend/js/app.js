@@ -1,4 +1,3 @@
-
 "use strict";
 
 // ==================================================
@@ -901,6 +900,248 @@ function setupDateInputs() {
 
 
 // ==================================================
+// Safe HTML Text
+// ==================================================
+
+function escapeHTML(value) {
+
+    return String(value).replace(/[&<>"']/g, character => {
+
+        const replacements = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;"
+        };
+
+        return replacements[character];
+    });
+}
+
+
+// ==================================================
+// Study Area Drawing Controls
+// ==================================================
+
+function initializeStudyAreaDrawing() {
+
+    if (!L.Control.Draw) {
+
+        console.error(
+            "Leaflet Draw is not loaded."
+        );
+
+        updateStatus(
+            "Drawing tools unavailable. Check Leaflet Draw.",
+            true
+        );
+
+        return;
+    }
+
+    drawnItems = new L.FeatureGroup();
+
+    map.addLayer(drawnItems);
+
+    const drawControl = new L.Control.Draw({
+
+        position: "topright",
+
+        draw: {
+
+            rectangle: {
+                shapeOptions: {
+                    color: "#36c98f",
+                    weight: 2,
+                    fillOpacity: 0.12
+                }
+            },
+
+            polygon: false,
+            polyline: false,
+            circle: false,
+            circlemarker: false,
+            marker: false
+        },
+
+        edit: {
+
+            featureGroup: drawnItems,
+
+            edit: true,
+            remove: true
+        }
+    });
+
+    map.addControl(drawControl);
+
+    map.on(L.Draw.Event.CREATED, event => {
+
+        drawnItems.clearLayers();
+
+        const layer = event.layer;
+
+        drawnItems.addLayer(layer);
+
+        userNavigatedMap = true;
+
+        updateSelectedStudyArea(layer.getBounds());
+    });
+
+    map.on(L.Draw.Event.EDITED, event => {
+
+        event.layers.eachLayer(layer => {
+            updateSelectedStudyArea(layer.getBounds());
+        });
+    });
+
+    map.on(L.Draw.Event.DELETED, () => {
+
+        selectedStudyBounds = null;
+
+        updateStatus(
+            "Study area cleared. Draw a new rectangle."
+        );
+
+        updateAnalysisMessage(
+            "Draw a rectangle before running analysis."
+        );
+
+        console.log("Study area selection cleared.");
+    });
+
+    console.log("EcoPredict study-area drawing initialized.");
+}
+
+
+// ==================================================
+// Update Selected Study Area
+// ==================================================
+
+function updateSelectedStudyArea(bounds) {
+
+    selectedStudyBounds = {
+
+        south: Number(bounds.getSouth().toFixed(6)),
+        west: Number(bounds.getWest().toFixed(6)),
+        north: Number(bounds.getNorth().toFixed(6)),
+        east: Number(bounds.getEast().toFixed(6))
+    };
+
+    updateStatus("Study area selected successfully.");
+
+    updateAnalysisMessage(
+        "Study area selected. Choose dates and run analysis."
+    );
+
+    console.log(
+        "Selected EcoPredict study area:",
+        selectedStudyBounds
+    );
+
+    console.log(
+        "Selected area coordinates:",
+        {
+            southwest: [
+                selectedStudyBounds.south,
+                selectedStudyBounds.west
+            ],
+
+            northeast: [
+                selectedStudyBounds.north,
+                selectedStudyBounds.east
+            ]
+        }
+    );
+}
+
+
+// ==================================================
+// Clear Study Area
+// ==================================================
+
+function clearStudyArea() {
+
+    if (drawnItems) {
+        drawnItems.clearLayers();
+    }
+
+    selectedStudyBounds = null;
+}
+
+
+// ==================================================
+// Public Study Area Access
+// ==================================================
+
+window.EcoPredictStudyArea = {
+
+    getBounds: function () {
+
+        if (!selectedStudyBounds) {
+            return null;
+        }
+
+        return { ...selectedStudyBounds };
+    },
+
+    clear: function () {
+
+        clearStudyArea();
+
+        updateStatus("Study area cleared.");
+    }
+};
+
+
+// ==================================================
+// Date Input Setup
+// ==================================================
+
+function setupDateInputs() {
+
+    const dateIds = [
+        "before-start",
+        "before-end",
+        "after-start",
+        "after-end"
+    ];
+
+    const inputs = dateIds.map(id =>
+        document.getElementById(id)
+    );
+
+    if (inputs.some(input => !input)) {
+
+        console.warn(
+            "One or more analysis date inputs are missing."
+        );
+
+        return;
+    }
+
+    // Default example periods.
+    // Users can change these dates before analysis.
+    const defaults = {
+        "before-start": "2024-10-01",
+        "before-end": "2024-11-01",
+        "after-start": "2025-10-01",
+        "after-end": "2025-11-01"
+    };
+
+    Object.entries(defaults).forEach(([id, value]) => {
+
+        const input = document.getElementById(id);
+
+        if (!input.value) {
+            input.value = value;
+        }
+    });
+}
+
+
+// ==================================================
 // Validate Analysis Inputs
 // ==================================================
 
@@ -1266,69 +1507,318 @@ function updateEnvironmentalMessage(message, isError = false) {
 }
 
 
-function displayEnvironmentalResult(result) {
 
-    const indicatorElement = document.getElementById(
-        "environmental-indicator"
-    );
+function displayEnvironmentalResult(result, interpretation = {}) {
 
-    const meanElement = document.getElementById(
-        "environmental-mean"
-    );
+    const getElement = (id) => document.getElementById(id);
 
-    const countElement = document.getElementById(
-        "environmental-image-count"
-    );
+    const setText = (id, value) => {
+        const element = getElement(id);
+        if (element) {
+            element.textContent = value ?? "--";
+        }
+    };
 
-    indicatorElement.textContent =
-        result.indicator || "--";
+    const indicatorElement = getElement("environmental-indicator");
+    const meanElement = getElement("environmental-mean");
+    const countElement = getElement("environmental-image-count");
 
-    countElement.textContent =
-        result.image_count ?? "--";
+    indicatorElement.textContent = result.indicator || "--";
+    countElement.textContent = result.image_count ?? "--";
 
-    if (result.status === "no_data" || result.mean === null) {
+    // Existing measurement display
+    const noData =
+        result.status === "no_data" ||
+        result.mean === null ||
+        result.mean === undefined ||
+        result.image_count === 0;
 
+    let value = null;
+    let unit = result.unit || "";
+
+    if (!noData) {
+
+        if (result.hazard === "heatwave") {
+            value = Number(result.mean_celsius).toFixed(2);
+                        unit = "°C";
+
+        } else if (result.hazard === "air_pollution") {
+            value = Number(result.mean).toExponential(3);
+
+        } else if (result.hazard === "flood") {
+            value = Number(result.mean).toFixed(2);
+
+        } else {
+            value = Number(result.mean).toFixed(4);
+        }
+
+        meanElement.textContent = `${value} ${unit}`;
+
+    } else {
         meanElement.textContent = "No data";
+    }
 
+    // Environmental Insights
+    setText(
+        "environmental-headline",
+        interpretation.headline || "Analysis completed"
+    );
+
+    setText(
+        "environmental-plain-language",
+        interpretation.plain_language || "No interpretation available."
+    );
+
+    setText(
+        "environmental-why-it-matters",
+        interpretation.why_it_matters
+    );
+
+    setText(
+        "environmental-what-to-watch",
+        interpretation.what_to_watch
+    );
+
+    setText(
+        "environmental-suggested-action",
+        interpretation.suggested_action
+    );
+
+    const evidenceStatus = noData
+        ? "Insufficient satellite observations"
+        : interpretation.evidence_status || "Measurement only";
+
+    setText(
+        "environmental-evidence-status",
+        `Evidence status: ${evidenceStatus.replaceAll("_", " ")}`
+    );
+
+    // Scientific Evidence
+    const scientific = interpretation.scientific || {};
+
+    setText(
+        "environmental-dataset",
+        scientific.dataset || result.dataset
+    );
+
+    setText(
+        "environmental-scientific-indicator",
+        scientific.indicator || result.indicator
+    );
+
+    let scientificMeasurement = "No valid measurement";
+
+    if (!noData) {
+        if (result.hazard === "heatwave") {
+            scientificMeasurement =
+                `${Number(result.mean_celsius).toFixed(2)} °C (land surface temperature)`;
+        } else if (result.hazard === "air_pollution") {
+            scientificMeasurement =
+                `${Number(result.mean).toExponential(3)} ${result.unit || ""}`;
+        } else if (result.hazard === "flood") {
+            scientificMeasurement =
+                `${Number(result.mean).toFixed(2)} ${result.unit || ""}`;
+        } else {
+            scientificMeasurement =
+                `${Number(result.mean).toFixed(4)} ${result.unit || ""}`;
+        }
+    }
+
+    setText(
+        "environmental-scientific-value",
+        scientificMeasurement
+    );
+
+    const startDate = scientific.start_date || result.start_date || "--";
+    const endDate = scientific.end_date || result.end_date || "--";
+
+    setText(
+        "environmental-observation-period",
+        `${startDate} to ${endDate}`
+    );
+
+    setText(
+        "environmental-scientific-image-count",
+        result.image_count ?? "--"
+    );
+
+    setText(
+        "environmental-limitations",
+        interpretation.limitations ||
+        "This measurement is not a validated hazard-risk prediction."
+    );
+
+    // Status message
+    if (noData) {
         updateEnvironmentalMessage(
             result.message || "No valid satellite measurements found."
         );
-
         return;
     }
 
     if (result.status !== "ok") {
-        throw new Error("The server returned an invalid measurement status.");
+        throw new Error(
+            "The server returned an invalid measurement status."
+        );
     }
-
-    let value;
-    let unit = result.unit || "";
-
-    if (result.hazard === "heatwave") {
-
-        value = Number(result.mean_celsius).toFixed(2);
-        unit = "°C";
-
-    } else if (result.hazard === "air_pollution") {
-
-        value = Number(result.mean).toExponential(3);
-
-    } else if (result.hazard === "flood") {
-
-        value = Number(result.mean).toFixed(2);
-
-    } else {
-
-        value = Number(result.mean).toFixed(4);
-    }
-
-    meanElement.textContent = `${value} ${unit}`;
 
     updateEnvironmentalMessage(
         `Analysis completed. ${result.image_count} satellite images processed.`
     );
 }
 
+
+
+async function displayEnvironmentalMap(hazard, requestData) {
+    const requestId = ++rasterRequestId;
+
+    const labels = {
+        air_pollution: {
+            title: "NO₂ Column Density",
+            description: "Sentinel-5P tropospheric nitrogen dioxide column density.",
+            low: "Lower NO₂",
+            high: "Higher NO₂"
+        },
+        flood: {
+            title: "Sentinel-1 VV Backscatter",
+            description: "Sentinel-1 radar VV backscatter. This is not a confirmed flood map.",
+            low: "Lower backscatter",
+            high: "Higher backscatter"
+        },
+        heatwave: {
+            title: "Land Surface Temperature",
+            description: "MODIS daytime land-surface temperature in °C, not air temperature.",
+            low: "Cooler surface",
+            high: "Warmer surface"
+        },
+        deforestation: {
+            title: "Vegetation Greenness (NDVI)",
+            description: "Sentinel-2 vegetation greenness. This does not independently confirm deforestation.",
+            low: "Lower NDVI",
+            high: "Higher NDVI"
+        }
+    };
+
+    try {
+        updateStatus("Rendering environmental satellite map...");
+
+        const response = await fetch(
+            `${API_BASE}/api/v1/environmental-map.png`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(requestData),
+                cache: "no-store"
+            }
+        );
+
+        if (!response.ok) {
+            let message = "Environmental map rendering failed.";
+
+            try {
+                const errorData = await response.json();
+                message = errorData.detail || message;
+            } catch {
+                // Keep the default error message.
+            }
+
+            throw new Error(message);
+        }
+
+        const imageBlob = await response.blob();
+
+        if (requestId !== rasterRequestId) return;
+
+        if (!imageBlob.type.includes("image/png")) {
+            throw new Error("Environmental map response is not a PNG.");
+        }
+
+        const west = Number(response.headers.get("X-Raster-West"));
+        const south = Number(response.headers.get("X-Raster-South"));
+        const east = Number(response.headers.get("X-Raster-East"));
+        const north = Number(response.headers.get("X-Raster-North"));
+
+        if (![west, south, east, north].every(Number.isFinite)) {
+            throw new Error("Environmental map geographic bounds are missing.");
+        }
+
+        const imageUrl = URL.createObjectURL(imageBlob);
+
+        const newOverlay = L.imageOverlay(
+            imageUrl,
+            [[south, west], [north, east]],
+            {
+                opacity: 0.85,
+                interactive: false
+            }
+        );
+
+        await new Promise((resolve, reject) => {
+            newOverlay.once("load", resolve);
+            newOverlay.once("error", reject);
+            newOverlay.addTo(map);
+        });
+
+        if (requestId !== rasterRequestId) {
+            map.removeLayer(newOverlay);
+            URL.revokeObjectURL(imageUrl);
+            return;
+        }
+
+        // Zoom the map to the selected environmental study area.
+        // This prevents the raster from appearing as a small rectangle
+        // inside a much larger map view.
+        map.fitBounds(newOverlay.getBounds(), {
+            padding: [35, 35],
+            maxZoom: 13,
+            animate: true
+        });
+
+        if (rasterOverlay) {
+            map.removeLayer(rasterOverlay);
+
+            if (rasterOverlay._ecopredictUrl) {
+                URL.revokeObjectURL(rasterOverlay._ecopredictUrl);
+            }
+        }
+
+        rasterOverlay = newOverlay;
+        rasterOverlay._ecopredictUrl = imageUrl;
+        currentLayer = `environmental-${hazard}`;
+
+        document.querySelectorAll(".layer-button").forEach(button => {
+            button.classList.remove("active");
+        });
+
+        const config = labels[hazard];
+
+        document.getElementById("map-layer-label").textContent =
+            config.title;
+
+        document.getElementById("layer-description").textContent =
+            config.description;
+
+        document.querySelector(".map-legend").innerHTML = `
+            <span class="legend-low"></span>
+            ${config.low}
+            <span class="legend-high"></span>
+            ${config.high}
+        `;
+
+        updateStatus("Environmental satellite map displayed");
+
+        console.log("Environmental map displayed:", hazard);
+
+    } catch (error) {
+        console.error("Environmental map failed:", error);
+        updateStatus(
+            `Environmental measurements loaded, but map rendering failed: ${error.message}`,
+            true
+        );
+    }
+}
 
 async function runEnvironmentalAnalysis() {
 
@@ -1553,7 +2043,13 @@ async function runEnvironmentalAnalysis() {
                     );
                 }
 
-                displayEnvironmentalResult(result.data);
+
+                displayEnvironmentalResult(
+                    result.data,
+                    result.interpretation
+                );
+
+                await displayEnvironmentalMap(hazard, requestData);
 
                 console.log(
                     "Environmental analysis completed:",
@@ -1594,7 +2090,6 @@ async function runEnvironmentalAnalysis() {
             "Run Environmental Analysis";
     }
 }
-
 
 
 

@@ -15,7 +15,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 
 from ecopredict.raster import export_ndvi_rasters
-from ecopredict.environmental import analyze_environmental_indicator
+from ecopredict.environmental import (
+    analyze_environmental_indicator,
+    render_environmental_indicator_png,
+)
+from ecopredict.intelligence import build_environmental_interpretation
 from ecopredict.raster_visualization import (
     get_raster_metadata,
     render_raster_png,
@@ -640,6 +644,8 @@ def process_environmental_analysis(job_id, hazard, bounds, start_date, end_date)
             end_date=end_date,
         )
 
+        interpretation = build_environmental_interpretation(result)
+
         analysis_jobs[job_id].update({
             "status": "completed",
             "result": {
@@ -651,6 +657,7 @@ def process_environmental_analysis(job_id, hazard, bounds, start_date, end_date)
                     "This result is not a validated hazard-risk prediction."
                 ),
                 "data": result,
+                "interpretation": interpretation,
             },
             "error": None,
         })
@@ -725,3 +732,54 @@ def get_environmental_analysis_status(job_id: str):
 
     return job
 
+
+# --------------------------------------------------
+# Environmental satellite map endpoint
+# --------------------------------------------------
+
+@app.post("/api/v1/environmental-map.png")
+def get_environmental_map(
+    request: EnvironmentalAnalysisRequest,
+):
+    """Render the selected satellite environmental indicator as a PNG."""
+
+    bounds = (
+        request.west,
+        request.south,
+        request.east,
+        request.north,
+    )
+
+    try:
+        png_data, raster_bounds = render_environmental_indicator_png(
+            hazard=request.hazard,
+            bounds=bounds,
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+
+        return Response(
+            content=png_data,
+            media_type="image/png",
+            headers={
+                "X-Raster-West": str(raster_bounds["west"]),
+                "X-Raster-South": str(raster_bounds["south"]),
+                "X-Raster-East": str(raster_bounds["east"]),
+                "X-Raster-North": str(raster_bounds["north"]),
+                "Cache-Control": "no-store",
+            },
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        logger.exception("Environmental map rendering failed.")
+
+        raise HTTPException(
+            status_code=502,
+            detail="Could not render the environmental satellite map.",
+        ) from exc

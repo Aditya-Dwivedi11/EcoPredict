@@ -338,9 +338,14 @@ def test_environmental_post_runs_analysis(monkeypatch):
 
     fake_result = {
         "hazard": "air_pollution",
+        "dataset": "COPERNICUS/S5P/OFFL/L3_NO2",
+        "indicator": "tropospheric_NO2_column_number_density",
         "mean": 0.00012,
         "unit": "mol/m²",
-        "scene_count": 5,
+        "image_count": 5,
+        "start_date": "2025-10-01",
+        "end_date": "2025-11-01",
+        "status": "completed",
     }
 
     monkeypatch.setattr(
@@ -374,6 +379,16 @@ def test_environmental_post_runs_analysis(monkeypatch):
     assert job["result"]["analysis_type"] == "satellite_indicator"
     assert job["result"]["risk_prediction_available"] is False
     assert job["result"]["data"] == fake_result
+
+    interpretation = job["result"]["interpretation"]
+
+    assert interpretation["evidence_status"] == "measurement_only"
+    assert interpretation["scientific"]["value"] == 0.00012
+    assert interpretation["scientific"]["image_count"] == 5
+    assert interpretation["scientific"]["dataset"] == (
+        "COPERNICUS/S5P/OFFL/L3_NO2"
+    )
+    assert "ground-level AQI" in interpretation["limitations"]
 
 
 def test_environmental_analysis_handles_failure(monkeypatch):
