@@ -47,3 +47,42 @@ def validate_ndvi(value):
 
     if not math.isfinite(value) or not -1 <= value <= 1:
         raise ValueError("NDVI must be finite and between -1 and 1.")
+
+# Maximum study area: 5,000 km².
+# At 10 m resolution, this is approximately 50 million pixels.
+MAX_STUDY_AREA_KM2 = 5000
+EARTH_RADIUS_KM = 6371.0088
+
+
+def calculate_bounds_area_km2(bounds):
+    """Calculate the approximate spherical area of a geographic bounding box."""
+    validate_bounds(bounds)
+
+    west, south, east, north = bounds
+
+    west_rad = math.radians(west)
+    east_rad = math.radians(east)
+    south_rad = math.radians(south)
+    north_rad = math.radians(north)
+
+    area = (
+        EARTH_RADIUS_KM**2
+        * (east_rad - west_rad)
+        * (math.sin(north_rad) - math.sin(south_rad))
+    )
+
+    return area
+
+
+def validate_study_area(bounds, max_area_km2=MAX_STUDY_AREA_KM2):
+    """Reject study areas that are too large for the configured analysis limit."""
+    area_km2 = calculate_bounds_area_km2(bounds)
+
+    if area_km2 > max_area_km2:
+        raise ValueError(
+            f"Study area is too large ({area_km2:,.1f} km²). "
+            f"Maximum allowed area is {max_area_km2:,.0f} km². "
+            "Please draw a smaller study area."
+        )
+
+    return area_km2

@@ -1,0 +1,531 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>EcoPredict | Environmental Intelligence</title>
+
+    <!-- Leaflet CSS -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+
+    <!-- Leaflet Draw CSS -->
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"
+    >
+
+    <!-- EcoPredict CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+    <div class="app-container">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+
+            <!-- Brand -->
+            <div class="brand">
+
+                <div class="brand-icon">E</div>
+
+                <div>
+                    <h1>EcoPredict</h1>
+                    <p>ENVIRONMENTAL INTELLIGENCE</p>
+                </div>
+
+            </div>
+
+
+            <!-- Study Region Search -->
+            <div class="sidebar-section">
+
+                <label>STUDY REGION</label>
+
+                <div class="search-box">
+
+                    <input
+                        type="text"
+                        id="region-search"
+                        placeholder="Search a location..."
+                        autocomplete="off"
+                    >
+
+                    <button
+                        id="search-button"
+                        type="button"
+                    >
+                        Search
+                    </button>
+
+                </div>
+
+                <p class="helper-text">
+                    Search for a city or geographic location.
+                </p>
+
+                <p class="helper-text">
+                    After searching, draw a rectangle on the map
+                    to select your study area.
+                </p>
+
+            </div>
+
+
+            <!-- Satellite Layer Controls -->
+            <div class="sidebar-section">
+
+                <label>SATELLITE ANALYSIS</label>
+
+                <div class="layer-controls">
+
+                    <button
+                        class="layer-button active"
+                        data-layer="before"
+                        type="button"
+                    >
+                        Before
+                    </button>
+
+                    <button
+                        class="layer-button"
+                        data-layer="after"
+                        type="button"
+                    >
+                        After
+                    </button>
+
+                    <button
+                        class="layer-button"
+                        data-layer="difference"
+                        type="button"
+                    >
+                        Difference
+                    </button>
+
+                </div>
+
+                <p
+                    id="layer-description"
+                    class="helper-text"
+                >
+                    Earlier satellite observation.
+                </p>
+
+            </div>
+
+
+            <!-- Current Analysis Period -->
+            <div class="sidebar-section">
+
+                <label>CURRENT ANALYSIS PERIOD</label>
+
+                <div class="period-card">
+
+                    <span>Before</span>
+
+                    <strong id="before-period">
+                        Loading...
+                    </strong>
+
+                </div>
+
+                <div class="period-card">
+
+                    <span>After</span>
+
+                    <strong id="after-period">
+                        Loading...
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <!-- Custom Satellite Analysis -->
+            <div class="sidebar-section">
+
+                <label>CUSTOM SATELLITE ANALYSIS</label>
+
+                <!-- Before Period -->
+                <div class="analysis-date-group">
+
+                    <label for="before-start">
+                        Before Period Start
+                    </label>
+
+                    <input
+                        type="date"
+                        id="before-start"
+                        required
+                    >
+
+                </div>
+
+                <div class="analysis-date-group">
+
+                    <label for="before-end">
+                        Before Period End
+                    </label>
+
+                    <input
+                        type="date"
+                        id="before-end"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- After Period -->
+                <div class="analysis-date-group">
+
+                    <label for="after-start">
+                        After Period Start
+                    </label>
+
+                    <input
+                        type="date"
+                        id="after-start"
+                        required
+                    >
+
+                </div>
+
+                <div class="analysis-date-group">
+
+                    <label for="after-end">
+                        After Period End
+                    </label>
+
+                    <input
+                        type="date"
+                        id="after-end"
+                        required
+                    >
+
+                </div>
+
+
+                <!-- Run Analysis -->
+                <button
+                    type="button"
+                    id="run-analysis-button"
+                    class="run-analysis-button"
+                >
+                    Run Satellite Analysis
+                </button>
+
+                <p
+                    class="helper-text"
+                    id="analysis-message"
+                    aria-live="polite"
+                >
+                    Select a study area and analysis dates before running.
+                </p>
+
+            </div>
+
+
+            <!-- Vegetation Indicators -->
+            <div class="sidebar-section">
+
+                <label>VEGETATION INDICATORS</label>
+
+                <div class="metric-card">
+
+                    <span>Mean NDVI — Before</span>
+
+                    <strong id="before-ndvi">--</strong>
+
+                </div>
+
+                <div class="metric-card">
+
+                    <span>Mean NDVI — After</span>
+
+                    <strong id="after-ndvi">--</strong>
+
+                </div>
+
+                <div class="metric-card">
+
+                    <span>Mean NDVI Change</span>
+
+                    <strong id="ndvi-change">--</strong>
+
+                </div>
+
+                <div class="metric-card">
+
+                    <span>Valid Pixels</span>
+
+                    <strong id="valid-pixels">--</strong>
+
+                </div>
+
+            </div>
+
+<!-- Environmental Hazard Analysis -->
+<div class="sidebar-section environmental-section">
+
+    <label>ENVIRONMENTAL HAZARD ANALYSIS</label>
+
+    <p class="helper-text">
+        Analyze satellite-derived environmental indicators for your selected study area.
+    </p>
+
+    <select id="environmental-hazard" class="environmental-input">
+        <option value="air_pollution">Air Pollution — Sentinel-5P NO₂</option>
+        <option value="flood">Flood Indicator — Sentinel-1</option>
+        <option value="heatwave">Land Surface Temperature — MODIS</option>
+        <option value="deforestation">Vegetation Indicator — Sentinel-2</option>
+    </select>
+
+    <label for="environmental-start-date">START DATE</label>
+    <input
+        type="date"
+        id="environmental-start-date"
+        class="environmental-input"
+    >
+
+    <label for="environmental-end-date">END DATE</label>
+    <input
+        type="date"
+        id="environmental-end-date"
+        class="environmental-input"
+    >
+
+    <button
+        type="button"
+        id="run-environmental-button"
+        class="run-analysis-button"
+    >
+        Run Environmental Analysis
+    </button>
+
+    <p
+        id="environmental-message"
+        class="helper-text"
+        aria-live="polite"
+    >
+        Select a study area and date range to begin.
+    </p>
+
+    <div class="metric-card">
+        <span>Satellite Indicator</span>
+        <strong id="environmental-indicator">--</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Mean Measurement</span>
+        <strong id="environmental-mean">--</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Satellite Images</span>
+        <strong id="environmental-image-count">--</strong>
+    </div>
+
+    <p
+        id="environmental-disclaimer"
+        class="helper-text"
+    >
+        Results are satellite-derived indicators, not validated hazard-risk predictions.
+    </p>
+
+    <div class="environmental-insights">
+    <h3>Environmental Insights</h3>
+
+    <h4 id="environmental-headline">
+        Waiting for analysis
+    </h4>
+
+    <p id="environmental-plain-language">
+        Run an analysis to see what the satellite observations indicate.
+    </p>
+
+    <div class="insight-item">
+        <strong>Why it matters</strong>
+        <p id="environmental-why-it-matters">--</p>
+    </div>
+
+    <div class="insight-item">
+        <strong>What to monitor</strong>
+        <p id="environmental-what-to-watch">--</p>
+    </div>
+
+    <div class="insight-item">
+        <strong>Suggested action</strong>
+        <p id="environmental-suggested-action">--</p>
+    </div>
+
+    <p id="environmental-evidence-status" class="helper-text">
+        Evidence status: Awaiting analysis
+    </p>
+</div>
+
+<div class="scientific-evidence">
+    <h3>Scientific Evidence</h3>
+
+    <p><strong>Dataset:</strong>
+        <span id="environmental-dataset">--</span>
+    </p>
+
+    <p><strong>Indicator:</strong>
+        <span id="environmental-scientific-indicator">--</span>
+    </p>
+
+    <p><strong>Measurement:</strong>
+        <span id="environmental-scientific-value">--</span>
+    </p>
+
+    <p><strong>Observation period:</strong>
+        <span id="environmental-observation-period">--</span>
+    </p>
+
+    <p><strong>Satellite images:</strong>
+        <span id="environmental-scientific-image-count">--</span>
+    </p>
+
+    <div class="insight-item">
+        <strong>Scientific limitations</strong>
+        <p id="environmental-limitations">--</p>
+    </div>
+</div>
+
+</div>
+
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+
+                <span class="status-dot"></span>
+
+                Satellite data interface
+
+                <p>Source: Sentinel-2</p>
+
+            </div>
+
+        </aside>
+
+
+        <!-- Main Dashboard -->
+        <main class="main-content">
+
+
+            <!-- Top Navigation -->
+            <header class="topbar">
+
+                <div>
+
+                    <h2>Environmental Monitoring</h2>
+
+                    <p>
+                        Satellite-derived vegetation intelligence
+                    </p>
+
+                </div>
+
+                <div
+                    class="location-label"
+                    id="location-label"
+                >
+                    Initial study area: Kanpur, India
+                </div>
+
+            </header>
+
+
+            <!-- Satellite Map Section -->
+            <section class="map-section">
+
+
+                <!-- Map Toolbar -->
+                <div class="map-toolbar">
+
+                    <div>
+
+                        <strong>Satellite NDVI Map</strong>
+
+                        <span id="map-layer-label">
+                            Before
+                        </span>
+
+                    </div>
+
+                    <div class="map-legend">
+
+                        <span class="legend-low"></span>
+
+                        Low vegetation
+
+                        <span class="legend-high"></span>
+
+                        High vegetation
+
+                    </div>
+
+                </div>
+
+
+                <!-- Leaflet Map -->
+                <div id="map"></div>
+
+
+                <!-- Map Caption -->
+                <div class="map-caption">
+
+                    Visualization of satellite-derived NDVI.
+
+                    This layer represents vegetation greenness,
+                    not a direct measurement of vegetation health.
+
+                </div>
+
+            </section>
+
+
+            <!-- Dashboard Footer -->
+            <footer class="dashboard-footer">
+
+                <span>EcoPredict v0.1.0</span>
+
+                <span id="system-status">
+                    Connecting to API...
+                </span>
+
+            </footer>
+
+        </main>
+
+    </div>
+
+
+    <!-- Leaflet JavaScript -->
+    <script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+    </script>
+
+
+    <!-- Leaflet Draw JavaScript -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js">
+    </script>
+
+
+    <!-- EcoPredict Application JavaScript -->
+    <script src="/static/js/app.js"></script>
+
+</body>
+
+</html>

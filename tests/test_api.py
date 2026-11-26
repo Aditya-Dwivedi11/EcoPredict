@@ -1,4 +1,5 @@
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
@@ -163,11 +164,31 @@ def test_ndvi_post_runs_analysis(
     import ecopredict.main as main
 
     output_file = tmp_path / "ndvi_change.csv"
+    raster_directory = tmp_path / "rasters"
 
     monkeypatch.setattr(
         main,
         "NDVI_RESULTS_FILE",
         output_file,
+    )
+
+    monkeypatch.setattr(
+        main,
+        "RASTER_DIRECTORY",
+        raster_directory,
+    )
+
+    exported_files = [
+        raster_directory / "ndvi_before.tif",
+        raster_directory / "ndvi_after.tif",
+        raster_directory / "ndvi_difference.tif",
+        raster_directory / "metadata.json",
+    ]
+
+    monkeypatch.setattr(
+        main,
+        "export_ndvi_rasters",
+        lambda **kwargs: exported_files,
     )
 
     def fake_analysis(bounds, periods, output_path):
@@ -195,9 +216,37 @@ def test_ndvi_post_runs_analysis(
         json=valid_analysis_request(),
     )
 
-    assert response.status_code == 200
-    assert response.json()["message"] == "Satellite analysis completed."
-    assert response.json()["record_count"] == 2
+    assert response.status_code == 202
+
+    submission = response.json()
+    assert submission["status"] == "queued"
+    assert "job_id" in submission
+
+    job_response = client.get(
+        f"/api/v1/ndvi-analysis/{submission['job_id']}"
+    )
+
+    assert job_response.status_code == 200
+
+    job_data = job_response.json()
+
+    assert job_data["status"] == "completed"
+    assert job_data["result"]["record_count"] == 2
+
+    assert job_data["result"]["raster_export"]["status"] == "completed"
+
+    assert job_data["result"]["raster_export"]["layers"] == [
+        "before",
+        "after",
+        "difference",
+    ]
+
+    assert job_data["result"]["raster_export"]["files"] == [
+        "ndvi_before.tif",
+        "ndvi_after.tif",
+        "ndvi_difference.tif",
+        "metadata.json",
+    ]
 
     mock_initialize.assert_called_once()
     mock_run_analysis.assert_called_once()
@@ -215,9 +264,168 @@ def test_ndvi_post_handles_earth_engine_failure(
         json=valid_analysis_request(),
     )
 
-    assert response.status_code == 502
-    assert "Satellite analysis could not be completed" in (
-        response.json()["detail"]
+    assert response.status_code == 202
+
+    submission = response.json()
+    assert "job_id" in submission
+
+    job_response = client.get(
+        f"/api/v1/ndvi-analysis/{submission['job_id']}"
     )
 
+    assert job_response.status_code == 200
+
+    job_data = job_response.json()
+
+    assert job_data["status"] == "failed"
+    assert "Earth Engine unavailable" in job_data["error"]
+
     mock_initialize.assert_called_once()
+
+
+@patch("ecopredict.main.initialize_earth_engine")
+def test_ndvi_post_rejects_oversized_study_area(
+    mock_initialize,
+):
+    payload = valid_analysis_request()
+
+    # Approximately 6,256 km².
+    payload["west"] = 79.5
+    payload["south"] = 25.5
+    payload["east"] = 80.5
+    payload["north"] = 26.5
+
+    response = client.post(
+        "/api/v1/ndvi-analysis",
+        json=payload,
+    )
+
+    assert response.status_code == 400
+
+    assert "Study area is too large" in response.json()["detail"]
+    assert "5,000 km²" in response.json()["detail"]
+
+    # Earth Engine must not initialize for an invalid study area.
+    mock_initialize.assert_not_called()
+
+
+def valid_environmental_request():
+    return {
+        "hazard": "air_pollution",
+        "west": 80.20,
+        "south": 26.38,
+        "east": 80.45,
+        "north": 26.55,
+        "start_date": "2025-10-01",
+        "end_date": "2025-11-01",
+    }
+
+
+def test_environmental_post_rejects_invalid_hazard():
+    payload = valid_environmental_request()
+    payload["hazard"] = "invalid_hazard"
+
+    response = client.post(
+        "/api/v1/environmental-analysis",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_environmental_post_runs_analysis(monkeypatch):
+    import ecopredict.main as main
+
+    fake_result = {
+        "hazard": "air_pollution",
+        "dataset": "COPERNICUS/S5P/OFFL/L3_NO2",
+        "indicator": "tropospheric_NO2_column_number_density",
+        "mean": 0.00012,
+        "unit": "mol/m²",
+        "image_count": 5,
+        "start_date": "2025-10-01",
+        "end_date": "2025-11-01",
+        "status": "completed",
+    }
+
+    monkeypatch.setattr(
+        main,
+        "analyze_environmental_indicator",
+        lambda **kwargs: fake_result,
+    )
+
+    response = client.post(
+        "/api/v1/environmental-analysis",
+        json=valid_environmental_request(),
+    )
+
+    assert response.status_code == 202
+
+    submission = response.json()
+
+    assert submission["status"] == "queued"
+    assert submission["hazard"] == "air_pollution"
+    assert "job_id" in submission
+
+    job_response = client.get(
+        f"/api/v1/environmental-analysis/{submission['job_id']}"
+    )
+
+    assert job_response.status_code == 200
+
+    job = job_response.json()
+
+    assert job["status"] == "completed"
+    assert job["result"]["analysis_type"] == "satellite_indicator"
+    assert job["result"]["risk_prediction_available"] is False
+    assert job["result"]["data"] == fake_result
+
+    interpretation = job["result"]["interpretation"]
+
+    assert interpretation["evidence_status"] == "measurement_only"
+    assert interpretation["scientific"]["value"] == 0.00012
+    assert interpretation["scientific"]["image_count"] == 5
+    assert interpretation["scientific"]["dataset"] == (
+        "COPERNICUS/S5P/OFFL/L3_NO2"
+    )
+    assert "ground-level AQI" in interpretation["limitations"]
+
+
+def test_environmental_analysis_handles_failure(monkeypatch):
+    import ecopredict.main as main
+
+    def fake_failure(**kwargs):
+        raise RuntimeError("Mock satellite processing failure")
+
+    monkeypatch.setattr(
+        main,
+        "analyze_environmental_indicator",
+        fake_failure,
+    )
+
+    response = client.post(
+        "/api/v1/environmental-analysis",
+        json=valid_environmental_request(),
+    )
+
+    assert response.status_code == 202
+
+    job_id = response.json()["job_id"]
+
+    job_response = client.get(
+        f"/api/v1/environmental-analysis/{job_id}"
+    )
+
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "failed"
+    assert "Mock satellite processing failure" in (
+        job_response.json()["error"]
+    )
+
+
+def test_environmental_status_returns_404_for_unknown_job():
+    response = client.get(
+        "/api/v1/environmental-analysis/unknown-job-id"
+    )
+
+    assert response.status_code == 404

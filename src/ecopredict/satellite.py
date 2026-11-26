@@ -5,16 +5,20 @@ import argparse
 import os
 from datetime import date
 from pathlib import Path
-
+from dotenv import load_dotenv
 import ee
 import pandas as pd
 
 from ecopredict.validation import (
     validate_bounds,
+    validate_study_area,
     validate_period,
     validate_ndvi,
 )
 
+# Load project-level environment configuration.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 COLLECTION = "COPERNICUS/S2_SR_HARMONIZED"
 
@@ -151,7 +155,7 @@ def analyze_period(region, start_date, end_date):
 
 def run_analysis(bounds, periods, output_path):
     """Analyze two chronological periods and save a CSV."""
-    validate_bounds(bounds)
+    validate_study_area(bounds)
 
     if len(periods) != 2:
         raise ValueError(

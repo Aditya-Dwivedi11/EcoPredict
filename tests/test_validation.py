@@ -5,6 +5,8 @@ from ecopredict.validation import (
     validate_bounds,
     validate_period,
     validate_ndvi,
+    calculate_bounds_area_km2,
+    validate_study_area,
 )
 
 
@@ -51,9 +53,39 @@ def test_valid_ndvi(value):
     validate_ndvi(value)
 
 
-@pytest.mark.parametrize("value", [None, -1.1, 1.1, float("nan"), float("inf"), True])
+@pytest.mark.parametrize(
+    "value",
+    [None, -1.1, 1.1, float("nan"), float("inf"), True],
+)
 def test_invalid_ndvi(value):
     with pytest.raises(ValueError):
         validate_ndvi(value)
 
-        # PYTHONPATH=src python -m ecopredict.satellite   export EE_PROJECT_ID="ecopredict-512404"
+
+# Study-area validation tests
+
+def test_calculate_kanpur_area():
+    area = calculate_bounds_area_km2(
+        (80.20, 26.38, 80.45, 26.55)
+    )
+
+    assert area > 0
+    assert area == pytest.approx(470.42, abs=0.1)
+
+
+def test_valid_study_area():
+    area = validate_study_area(
+        (80.20, 26.38, 80.45, 26.55)
+    )
+
+    assert area < 5000
+
+
+def test_oversized_study_area():
+    with pytest.raises(ValueError, match="Study area is too large"):
+        validate_study_area((-10, -10, 10, 10))
+
+
+def test_invalid_bounds_rejected_by_study_area():
+    with pytest.raises(ValueError):
+        validate_study_area((80.45, 26.38, 80.20, 26.55))
